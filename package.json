@@ -20,7 +20,8 @@
   "dependencies": {
     "@clack/prompts": "^1.6.0",
     "boune": "^0.10.2",
-     "diff": "^9.0.0",
+    "chalk": "^5.4.1",
+    "diff": "^9.0.0",
     "fs-extra": "^11.3.6",
     "ora": "^9.4.1",
     "simple-git": "^3.36.0"

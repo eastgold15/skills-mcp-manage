@@ -1,29 +1,43 @@
 {
-  "name": "@agent/cli",
-  "version": "1.0.0",
-  "module": "src/index.ts",
-  "type": "module",
-  "bin": {
-    "agent": "src/index.ts"
+  "dependencies": {
+    "@clack/prompts": "^1.7.0",
+    "@shikijs/langs": "^4.4.1",
+    "@shikijs/themes": "^4.4.1",
+    "@visulima/cerebro": "^3.0.5",
+    "@visulima/colorize": "^2.1.0",
+    "@visulima/error": "^6.1.0",
+    "@visulima/fs": "^5.1.0",
+    "@visulima/pail": "^4.1.0",
+    "@visulima/path": "^3.1.0",
+    "@visulima/tabular": "^4.1.0",
+    "@visulima/tui": "^3.0.0",
+    "react": "^19.2.8",
+    "react-reconciler": "^0.33.0",
+    "shiki": "^4.4.1",
+    "simple-git": "^3.36.0"
   },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.3",
+    "@types/bun": "latest",
+    "@types/node": "^26.0.1",
+    "@types/react": "^19.2.18",
+    "lefthook": "^2.1.10",
+    "typescript": "^6.0.3",
+    "ultracite": "7.9.4"
+  },
+  "name": "@agent/cli",
   "scripts": {
     "build": "bun build --compile --outfile agent src/index.ts",
     "dev": "bun run src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "ultracite check",
+    "fix": "ultracite fix",
+    "prepare": "lefthook install"
   },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/fs-extra": "^11.0.4",
-    "@types/node": "^26.0.1",
-    "typescript": "^6.0.3"
-  },
-  "dependencies": {
-    "@clack/prompts": "^1.6.0",
-    "boune": "^0.10.2",
-    "chalk": "^5.4.1",
-    "diff": "^9.0.0",
-    "fs-extra": "^11.3.6",
-    "ora": "^9.4.1",
-    "simple-git": "^3.36.0"
+  "type": "module",
+  "version": "1.0.0",
+  "module": "src/index.ts",
+  "bin": {
+    "agent": "src/index.ts"
   }
 }

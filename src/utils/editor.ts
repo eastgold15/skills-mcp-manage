@@ -1,5 +1,4 @@
-import { spawn } from 'child_process';
-import path from 'path';
+import { spawn } from 'node:child_process';
 
 export async function openMergeEditor(
   oursPath: string,

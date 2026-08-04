@@ -1,17 +1,25 @@
-import ora from 'ora';
+import { spinner } from "@clack/prompts";
 
 export function createSpinner(message: string) {
-  return ora(message);
+  const s = spinner();
+  s.start(message);
+  return s;
 }
 
-export async function withSpinner<T>(message: string, task: () => Promise<T>): Promise<T> {
-  const spinner = ora(message).start();
+export async function withSpinner<T>(
+  message: string,
+  task: () => Promise<T>
+): Promise<T> {
+  const s = spinner();
+  s.start(message);
+
   try {
     const result = await task();
-    spinner.succeed();
+    s.stop(message);
     return result;
-  } catch {
-    spinner.fail();
-    throw new Error('Task failed');
+  } catch (error) {
+    s.error(message);
+    // 原样上抛，保留真实错误原因
+    throw error;
   }
 }

@@ -1,13 +1,17 @@
-import { select, multiselect, text, confirm } from '@clack/prompts';
-import { colors } from './colors';
+import { confirm, multiselect, select, text } from "@clack/prompts";
+import { createTable } from "@visulima/tabular";
+import { colors } from "./colors";
 
-export async function askSelect<T>(message: string, choices: Array<{ label: string; value: T }>): Promise<T> {
+export async function askSelect<T>(
+  message: string,
+  choices: Array<{ label: string; value: T }>
+): Promise<T> {
   const result = await select({
     message,
     options: choices.map((c) => ({
-      value: c.value,
       label: c.label,
-    })) as unknown as Parameters<typeof select>[0]['options'],
+      value: c.value,
+    })) as unknown as Parameters<typeof select>[0]["options"],
   });
   return result as T;
 }
@@ -19,14 +23,17 @@ export async function askMultiSelect<T>(
   const result = await multiselect({
     message,
     options: choices.map((c) => ({
-      value: c.value,
       label: c.label,
-    })) as unknown as Parameters<typeof multiselect>[0]['options'],
+      value: c.value,
+    })) as unknown as Parameters<typeof multiselect>[0]["options"],
   });
   return result as T[];
 }
 
-export async function askText(message: string, placeholder?: string): Promise<string> {
+export async function askText(
+  message: string,
+  placeholder?: string
+): Promise<string> {
   const result = await text({
     message,
     placeholder,
@@ -42,15 +49,16 @@ export async function askConfirm(message: string): Promise<boolean> {
 }
 
 export function printTable(headers: string[], rows: string[][]): void {
-  console.log('');
-  const formattedHeaders = headers.map((h) => colors.bold(h));
-  console.log(' ' + formattedHeaders.join(' | '));
-  console.log(' ' + headers.map(() => '---').join(' | '));
-  
+  const table = createTable();
+  table.setHeaders(headers.map((h) => colors.bold(h)));
+
   for (const row of rows) {
-    console.log(' ' + row.join(' | '));
+    table.addRow(row);
   }
-  console.log('');
+
+  console.log("");
+  console.log(table.toString());
+  console.log("");
 }
 
 export function printInfo(message: string): void {

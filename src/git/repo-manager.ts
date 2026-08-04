@@ -1,5 +1,6 @@
-import simpleGit, { SimpleGit } from 'simple-git';
-import fs from 'fs-extra';
+import { ensureDir, isAccessible } from '@visulima/fs';
+import { join } from '@visulima/path';
+import simpleGit, { type SimpleGit } from 'simple-git';
 import { getCachePath } from '../utils/path';
 
 export interface RepoManager {
@@ -68,14 +69,14 @@ export function createRepoManager(): RepoManager {
 
     ensureCloned: async (url: string, cacheRoot: string): Promise<string> => {
       const cachePath = getCachePath(cacheRoot, url);
-      
-      if (await fs.pathExists(cachePath)) {
+
+      if (await isAccessible(cachePath)) {
         const git = getGit(cachePath);
         await git.fetch();
         return cachePath;
       }
-      
-      await fs.ensureDir(`${cacheRoot}/skills`);
+
+      await ensureDir(join(cacheRoot, 'skills'));
       await simpleGit().clone(url, cachePath);
       return cachePath;
     },

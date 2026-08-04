@@ -1,7 +1,7 @@
 import { writeManifest } from '../core/manifest';
-import { colors } from '../ui/colors';
+import { printSuccess } from '../ui/prompts';
 
 export async function init(projectPath: string): Promise<void> {
   await writeManifest(projectPath, { version: 2, capabilities: {} });
-  console.log(colors.success(`Initialized agent project at ${projectPath}`));
+  printSuccess(`已在 ${projectPath} 初始化 agent 项目`);
 }

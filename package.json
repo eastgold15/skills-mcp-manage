@@ -31,7 +31,7 @@
     "dev": "bun run src/index.ts",
     "build": "packem build && npm link",
     "build:watch": "packem build  --watch",
-    "typecheck": "tsc --noEmit",
+    "type-check": "tsc --noEmit",
     "check": "ultracite check",
     "fix": "ultracite fix",
     "prepare": "lefthook install"

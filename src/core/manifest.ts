@@ -1,27 +1,35 @@
-import fs from 'fs-extra';
-import path from 'path';
-import { DependencyTable, Capability } from './types';
+import { ensureDir, isAccessible, readJson, writeJson } from '@visulima/fs';
+import { dirname, join } from '@visulima/path';
+import type { Capability, DependencyTable } from './types';
 
 const MANIFEST_FILE = '.agent/deps.json';
-const DEFAULT_MANIFEST: DependencyTable = { version: 2, capabilities: {} };
 
-export async function readManifest(projectPath: string): Promise<DependencyTable> {
-  const manifestPath = getManifestPath(projectPath);
-  if (!(await fs.pathExists(manifestPath))) {
-    return DEFAULT_MANIFEST;
-  }
-  const raw = await fs.readFile(manifestPath, 'utf-8');
-  return JSON.parse(raw) as DependencyTable;
+/** 每次返回新对象，避免调用方修改后污染后续读取 */
+function createDefaultManifest(): DependencyTable {
+  return { version: 2, capabilities: {} };
 }
 
-export async function writeManifest(projectPath: string, manifest: DependencyTable): Promise<void> {
+export async function readManifest(
+  projectPath: string
+): Promise<DependencyTable> {
   const manifestPath = getManifestPath(projectPath);
-  await fs.ensureDir(path.dirname(manifestPath));
-  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+  if (!(await isAccessible(manifestPath))) {
+    return createDefaultManifest();
+  }
+  return await readJson<DependencyTable>(manifestPath);
+}
+
+export async function writeManifest(
+  projectPath: string,
+  manifest: DependencyTable
+): Promise<void> {
+  const manifestPath = getManifestPath(projectPath);
+  await ensureDir(dirname(manifestPath));
+  await writeJson(manifestPath, manifest, { indent: 2 });
 }
 
 export function getManifestPath(projectPath: string): string {
-  return path.join(projectPath, MANIFEST_FILE);
+  return join(projectPath, MANIFEST_FILE);
 }
 
 export async function addCapability(
@@ -34,7 +42,10 @@ export async function addCapability(
   await writeManifest(projectPath, manifest);
 }
 
-export async function removeCapability(projectPath: string, id: string): Promise<void> {
+export async function removeCapability(
+  projectPath: string,
+  id: string
+): Promise<void> {
   const manifest = await readManifest(projectPath);
   delete manifest.capabilities[id];
   await writeManifest(projectPath, manifest);
@@ -53,12 +64,20 @@ export async function updateCapability(
   }
 }
 
-export async function getCapability(projectPath: string, id: string): Promise<Capability | undefined> {
+export async function getCapability(
+  projectPath: string,
+  id: string
+): Promise<Capability | undefined> {
   const manifest = await readManifest(projectPath);
   return manifest.capabilities[id];
 }
 
-export async function listCapabilities(projectPath: string): Promise<Array<{ id: string; capability: Capability }>> {
+export async function listCapabilities(
+  projectPath: string
+): Promise<Array<{ id: string; capability: Capability }>> {
   const manifest = await readManifest(projectPath);
-  return Object.entries(manifest.capabilities).map(([id, capability]) => ({ id, capability }));
+  return Object.entries(manifest.capabilities).map(([id, capability]) => ({
+    id,
+    capability,
+  }));
 }

@@ -1,18 +1,14 @@
-import { SkillEngine } from '../engines/skill-engine';
+import type { SkillEngine } from '../engines/skill-engine';
+import { printSuccess } from '../ui/prompts';
 import { withSpinner } from '../ui/spinner';
-import { printSuccess, printError } from '../ui/prompts';
 
 export async function reset(
   projectPath: string,
   id: string,
   engine: SkillEngine
 ): Promise<void> {
-  try {
-    await withSpinner(`Resetting ${id} to upstream`, async () => {
-      await engine.update(projectPath, id);
-    });
-    printSuccess(`Reset ${id} to upstream successfully`);
-  } catch (error) {
-    printError(`Failed to reset ${id}: ${(error as Error).message}`);
-  }
+  await withSpinner(`正在将 ${id} 重置到上游版本`, async () => {
+    await engine.update(projectPath, id);
+  });
+  printSuccess(`已将 ${id} 重置到上游版本`);
 }

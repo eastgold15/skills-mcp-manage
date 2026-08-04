@@ -23,12 +23,14 @@
     "@types/react": "^19.2.18",
     "lefthook": "^2.1.10",
     "typescript": "^6.0.3",
-    "ultracite": "7.9.4"
+    "ultracite": "7.9.4",
+    "@visulima/packem": "^1.28.3"
   },
   "name": "@agent/cli",
   "scripts": {
-    "build": "bun build --compile --outfile agent src/index.ts",
     "dev": "bun run src/index.ts",
+    "build": "packem build && npm link",
+    "build:watch": "packem build  --watch",
     "typecheck": "tsc --noEmit",
     "check": "ultracite check",
     "fix": "ultracite fix",

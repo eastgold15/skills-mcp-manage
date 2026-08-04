@@ -1,12 +1,12 @@
-import { ensureDir, isAccessible, readJson, writeJson } from '@visulima/fs';
-import { dirname, join } from '@visulima/path';
-import type { Capability, DependencyTable } from './types';
+import { ensureDir, isAccessible, readJson, writeJson } from "@visulima/fs";
+import { dirname, join } from "@visulima/path";
+import type { Capability, DependencyTable } from "./types";
 
-const MANIFEST_FILE = '.agent/deps.json';
+const MANIFEST_FILE = ".agent/deps.json";
 
 /** 每次返回新对象，避免调用方修改后污染后续读取 */
 function createDefaultManifest(): DependencyTable {
-  return { version: 2, capabilities: {} };
+  return { capabilities: {}, version: 2 };
 }
 
 export async function readManifest(
@@ -77,7 +77,7 @@ export async function listCapabilities(
 ): Promise<Array<{ id: string; capability: Capability }>> {
   const manifest = await readManifest(projectPath);
   return Object.entries(manifest.capabilities).map(([id, capability]) => ({
-    id,
     capability,
+    id,
   }));
 }

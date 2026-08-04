@@ -1,6 +1,6 @@
-import type { SkillEngine } from '../engines/skill-engine';
-import { printSuccess } from '../ui/prompts';
-import { withSpinner } from '../ui/spinner';
+import type { SkillEngine } from "../engines/skill-engine";
+import { printSuccess } from "../ui/prompts";
+import { withSpinner } from "../ui/spinner";
 
 export async function create(
   projectPath: string,

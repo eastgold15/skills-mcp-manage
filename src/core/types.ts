@@ -1,39 +1,44 @@
-export type CapabilityKind = 'skill' | 'mcp';
+export type CapabilityKind = "skill" | "mcp";
 
-export type SourceType = 'git-subdir' | 'git' | 'registry' | 'created';
+export type SourceType = "git-subdir" | "git" | "registry" | "created";
 
 export type Source =
-  | { type: 'git-subdir'; repoUrl: string; subPath: string }
-  | { type: 'git'; repoUrl: string }
-  | { type: 'registry'; registryUrl: string; entryKey: string }
-  | { type: 'created' };
+  | { type: "git-subdir"; repoUrl: string; subPath: string }
+  | { type: "git"; repoUrl: string }
+  | { type: "registry"; registryUrl: string; entryKey: string }
+  | { type: "created" };
 
 export type Version =
   | { hash: string; lastUpstreamHash?: string }
   | { semver: string };
 
-export type CapabilityStatus = 'upstream' | 'modified' | 'forked' | 'created' | 'published';
+export type CapabilityStatus =
+  | "upstream"
+  | "modified"
+  | "forked"
+  | "created"
+  | "published";
 
 export interface CapabilityConfig {
-  command?: string;
   args?: string[];
+  command?: string;
   env?: Record<string, string>;
 }
 
 export interface Capability {
-  kind: CapabilityKind;
+  config?: CapabilityConfig;
   displayName?: string;
+  installPath: string;
+  kind: CapabilityKind;
   source: Source;
   status: CapabilityStatus;
-  version?: Version;
-  installPath: string;
-  config?: CapabilityConfig;
   updatedAt: string;
+  version?: Version;
 }
 
 export interface DependencyTable {
-  version: number;
   capabilities: Record<string, Capability>;
+  version: number;
 }
 
 export interface AgentConfig {
@@ -44,23 +49,23 @@ export interface AgentConfig {
 
 export interface InstallOptions {
   from?: string;
-  path?: string;
   name?: string;
+  path?: string;
 }
 
 export interface UpdateResult {
-  success: boolean;
   conflicts: string[];
+  success: boolean;
   updated: string[];
 }
 
 export interface StatusInfo {
-  id: string;
-  kind: CapabilityKind;
-  status: CapabilityStatus;
-  hash: string;
-  lastUpstreamHash?: string;
-  installPath: string;
   displayName?: string;
+  hash: string;
+  id: string;
+  installPath: string;
   isModified: boolean;
+  kind: CapabilityKind;
+  lastUpstreamHash?: string;
+  status: CapabilityStatus;
 }

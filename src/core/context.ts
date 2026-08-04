@@ -1,13 +1,13 @@
-import { ensureCacheDir, getConfig } from './config';
-import { createMCPEngine, type MCPEngine } from '../engines/mcp-engine';
-import { createSkillEngine, type SkillEngine } from '../engines/skill-engine';
-import { createRepoManager } from '../git/repo-manager';
+import { createMCPEngine, type MCPEngine } from "../engines/mcp-engine";
+import { createSkillEngine, type SkillEngine } from "../engines/skill-engine";
+import { createRepoManager } from "../git/repo-manager";
+import { ensureCacheDir, getConfig } from "./config";
 
 export interface AgentContext {
-  projectPath: string;
   cacheRoot: string;
-  skillEngine: SkillEngine;
   mcpEngine: MCPEngine;
+  projectPath: string;
+  skillEngine: SkillEngine;
 }
 
 let cached: AgentContext | undefined;
@@ -29,10 +29,10 @@ export async function getContext(): Promise<AgentContext> {
   const repoManager = createRepoManager();
 
   cached = {
-    projectPath: process.cwd(),
     cacheRoot,
-    skillEngine: createSkillEngine(repoManager, cacheRoot),
     mcpEngine: createMCPEngine(repoManager, cacheRoot),
+    projectPath: process.cwd(),
+    skillEngine: createSkillEngine(repoManager, cacheRoot),
   };
 
   return cached;

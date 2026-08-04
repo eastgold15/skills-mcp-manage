@@ -1,19 +1,19 @@
-import { isAccessible, readJson, walk } from '@visulima/fs';
-import { join } from '@visulima/path';
-import type { DependencyTable } from './types';
+import { isAccessible, readJson, walk } from "@visulima/fs";
+import { join } from "@visulima/path";
+import type { DependencyTable } from "./types";
 
 export async function scanProject(
   projectPath: string
 ): Promise<DependencyTable> {
-  const manifestPath = join(projectPath, '.agent', 'deps.json');
+  const manifestPath = join(projectPath, ".agent", "deps.json");
   if (!(await isAccessible(manifestPath))) {
-    return { version: 2, capabilities: {} };
+    return { capabilities: {}, version: 2 };
   }
   return await readJson<DependencyTable>(manifestPath);
 }
 
 export async function scanCache(cacheRoot: string): Promise<string[]> {
-  const skillsDir = join(cacheRoot, 'skills');
+  const skillsDir = join(cacheRoot, "skills");
   if (!(await isAccessible(skillsDir))) {
     return [];
   }
@@ -22,16 +22,13 @@ export async function scanCache(cacheRoot: string): Promise<string[]> {
 
   // maxDepth 1 只看直接子项；walk 会 yield 起始目录自身，需跳过
   for await (const entry of walk(skillsDir, {
-    maxDepth: 1,
     includeFiles: false,
+    maxDepth: 1,
   })) {
     if (entry.path === skillsDir) {
       continue;
     }
-    if (
-      entry.isDirectory() &&
-      (await isAccessible(join(entry.path, '.git')))
-    ) {
+    if (entry.isDirectory() && (await isAccessible(join(entry.path, ".git")))) {
       repos.push(entry.name);
     }
   }

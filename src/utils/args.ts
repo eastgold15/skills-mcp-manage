@@ -1,4 +1,4 @@
-import { VisulimaError } from '@visulima/error';
+import { VisulimaError } from "@visulima/error";
 
 /**
  * 取位置参数，缺失时抛错。
@@ -15,9 +15,9 @@ export function requireArgument(
 
   if (!value) {
     throw new VisulimaError({
-      message: `缺少必填参数 <${name}>`,
-      name: 'MissingArgument',
       hint: `用法：agent <命令> <${name}>`,
+      message: `缺少必填参数 <${name}>`,
+      name: "MissingArgument",
     });
   }
 

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn } from "node:child_process";
 
 export async function openMergeEditor(
   oursPath: string,
@@ -7,18 +7,25 @@ export async function openMergeEditor(
   outputPath: string
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const args = ['--wait', '--merge', oursPath, theirsPath, basePath, outputPath];
-    const editor = spawn('code', args);
-    
-    editor.on('close', (code) => {
+    const args = [
+      "--wait",
+      "--merge",
+      oursPath,
+      theirsPath,
+      basePath,
+      outputPath,
+    ];
+    const editor = spawn("code", args);
+
+    editor.on("close", (code) => {
       if (code === 0) {
         resolve();
       } else {
         reject(new Error(`VS Code exited with code ${code}`));
       }
     });
-    
-    editor.on('error', (error) => {
+
+    editor.on("error", (error) => {
       reject(error);
     });
   });
@@ -26,17 +33,17 @@ export async function openMergeEditor(
 
 export async function openFile(filePath: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const editor = spawn('code', ['--wait', filePath]);
-    
-    editor.on('close', (code) => {
+    const editor = spawn("code", ["--wait", filePath]);
+
+    editor.on("close", (code) => {
       if (code === 0) {
         resolve();
       } else {
         reject(new Error(`VS Code exited with code ${code}`));
       }
     });
-    
-    editor.on('error', (error) => {
+
+    editor.on("error", (error) => {
       reject(error);
     });
   });

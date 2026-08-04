@@ -1,8 +1,8 @@
-import type { MCPEngine } from '../engines/mcp-engine';
-import type { SkillEngine } from '../engines/skill-engine';
-import type { InstallOptions } from '../core/types';
-import { printSuccess } from '../ui/prompts';
-import { withSpinner } from '../ui/spinner';
+import type { InstallOptions } from "../core/types";
+import type { MCPEngine } from "../engines/mcp-engine";
+import type { SkillEngine } from "../engines/skill-engine";
+import { printSuccess } from "../ui/prompts";
+import { withSpinner } from "../ui/spinner";
 
 /**
  * 按来源前缀分流：registry: 走 MCP 引擎，其余走技能引擎。
@@ -14,7 +14,7 @@ export async function install(
   engines: { skillEngine: SkillEngine; mcpEngine: MCPEngine },
   options?: InstallOptions
 ): Promise<void> {
-  const engine = source.startsWith('registry:')
+  const engine = source.startsWith("registry:")
     ? engines.mcpEngine
     : engines.skillEngine;
 

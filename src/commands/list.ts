@@ -1,6 +1,6 @@
-import type { SkillEngine } from '../engines/skill-engine';
-import { colors, kindColor, statusColor } from '../ui/colors';
-import { printTable } from '../ui/prompts';
+import type { SkillEngine } from "../engines/skill-engine";
+import { colors, kindColor, statusColor } from "../ui/colors";
+import { printTable } from "../ui/prompts";
 
 export async function list(
   projectPath: string,
@@ -9,7 +9,7 @@ export async function list(
   const capabilities = await engine.list(projectPath);
 
   if (capabilities.length === 0) {
-    console.log(colors.info('尚未安装任何能力'));
+    console.log(colors.info("尚未安装任何能力"));
     return;
   }
 
@@ -20,5 +20,5 @@ export async function list(
     capability.installPath,
   ]);
 
-  printTable(['ID', '类型', '状态', '安装路径'], rows);
+  printTable(["ID", "类型", "状态", "安装路径"], rows);
 }

@@ -4,9 +4,9 @@ import {
   adoptOutside,
   type Divergence,
   findDivergences,
+  linkToLibrary,
   touchedFiles,
 } from "../core/divergence";
-import { normalizeOne } from "../core/normalize";
 import { readScanCache, reevaluate } from "../core/scan";
 import { colors } from "../ui/colors";
 import {
@@ -114,19 +114,9 @@ async function settle(divergence: Divergence): Promise<void> {
   ]);
 
   if (library === outside) {
-    // 两边一样了 —— 直接收编，项目换链接，散落消除
-    const result = await normalizeOne({
-      adoptable: true,
-      id: divergence.id,
-      inLibrary: false,
-      isLink: false,
-      path: divergence.outside,
-    });
-    if (result.outcome === "linked") {
-      printSuccess(`${divergence.id}：两边已一致，项目那份已换为链接`);
-    } else {
-      printWarning(`${divergence.id}：收编未完成（${result.outcome}）`);
-    }
+    // 两边一样了 —— 换链接，散落消除
+    await linkToLibrary(divergence);
+    printSuccess(`${divergence.id}：两边已一致，项目那份已换为链接`);
     return;
   }
 
@@ -135,6 +125,13 @@ async function settle(divergence: Divergence): Promise<void> {
   );
 }
 
+/**
+ * 执行用户的决定。
+ *
+ * 这里一律用 linkToLibrary 而非 normalizeOne —— 后者的 diverged 守卫
+ * 是给自动批量用的（无人决策时必须保守），走到这里用户已经明确表态，
+ * 再拦一次就等于把决定挡掉，表现为「选了保留本体库但没生效」。
+ */
 async function apply(
   divergence: Divergence,
   decision: Decision
@@ -150,28 +147,16 @@ async function apply(
   }
 
   if (decision === "take-outside") {
+    // 先把本体库换成项目那份，再让项目指向它
     await adoptOutside(divergence);
+    await linkToLibrary(divergence);
+    printSuccess(`${divergence.id}：已用项目那份覆盖本体库，原位置换为链接`);
+    return;
   }
 
-  // keep-library 与 take-outside 收尾一样：本体库已是想要的内容，
-  // 把项目那份换成链接
-  const result = await normalizeOne({
-    adoptable: true,
-    id: divergence.id,
-    inLibrary: false,
-    isLink: false,
-    path: divergence.outside,
-  });
-
-  if (result.outcome === "linked") {
-    printSuccess(
-      decision === "take-outside"
-        ? `${divergence.id}：已用项目那份覆盖本体库，原位置换为链接`
-        : `${divergence.id}：已保留本体库这份，项目那份换为链接`
-    );
-  } else {
-    printWarning(`${divergence.id}：处理未完成（${result.outcome}）`);
-  }
+  // keep-library：本体库已是想要的内容，丢弃项目那份换成链接
+  await linkToLibrary(divergence);
+  printSuccess(`${divergence.id}：已保留本体库这份，项目那份换为链接`);
 }
 
 /** 单份内容的实时差异，返回 null 表示已无差异 */
@@ -243,8 +228,9 @@ async function handleOne(
   // 实时重算：本体库可能已被前几轮改过
   const divergence = await refresh(stale);
   if (!divergence) {
-    printSuccess(`${stale.id}（${stale.outside}）已与本体库一致，直接收编`);
-    await apply(stale, "keep-library");
+    // 内容已一致（前几轮改动的结果），换链接即可，不必再问
+    await linkToLibrary(stale);
+    printSuccess(`${stale.id}（${stale.outside}）已与本体库一致，换为链接`);
     return true;
   }
 

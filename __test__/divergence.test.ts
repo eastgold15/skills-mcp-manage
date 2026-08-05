@@ -5,6 +5,7 @@ import { join } from "@visulima/path";
 import {
   adoptOutside,
   findDivergences,
+  linkToLibrary,
   touchedFiles,
 } from "../src/core/divergence";
 import { normalizeOne } from "../src/core/normalize";
@@ -138,12 +139,80 @@ describe("adoptOutside 用项目那份覆盖本体库", () => {
 });
 
 /**
- * 关键场景：同一个 id 有多处、且彼此内容都不同。
+ * 真实 bug 的回归防线。
  *
- * 实测 find-skills 在 shopkeep2/visulima/xianyu-spy 三处加本体库
- * 共四个版本互不相同。收敛为一份时，处理完第一处本体库就变了，
- * 后续几处必须对照新内容重算，不能用启动时的快照。
+ * agent diff 里选「保留本体库这份」没有生效 —— 因为它走了 normalizeOne，
+ * 而后者的 diverged 守卫（内容不同就停手）是给自动批量用的：无人决策时
+ * 必须保守。可走到 diff 的决策分支意味着用户已明确表态，再拦一次就是
+ * 把用户的决定挡掉，表现为「选了但没反应，再跑还是 11 处」。
  */
+describe("已决定后不再被 diverged 守卫拦下", () => {
+  it("保留本体库：内容不同也要换成链接", async () => {
+    await makeSkill(join(libraryDir(), "keep"), { "SKILL.md": "本体库版\n" });
+    const outside = join(DISK, "proj", ".claude", "skills", "keep");
+    await makeSkill(outside, { "SKILL.md": "项目版（要丢弃）\n" });
+
+    const [divergence] = await findDivergences([hitFor(outside, "keep")]);
+    expect(divergence).toBeDefined();
+
+    // 关键：normalizeOne 在这种情况下会报 diverged 拒绝动手
+    expect((await normalizeOne(hitFor(outside, "keep"))).outcome).toBe(
+      "diverged"
+    );
+
+    // linkToLibrary 则执行用户的决定
+    await linkToLibrary(divergence!);
+
+    expect((await lstat(outside)).isSymbolicLink()).toBe(true);
+    // 读到的是本体库的内容，项目那份已丢弃
+    expect(await readFile(join(outside, "SKILL.md"))).toBe("本体库版\n");
+    // 本体库自身没被动过
+    expect(await readFile(join(libraryDir(), "keep", "SKILL.md"))).toBe(
+      "本体库版\n"
+    );
+  });
+
+  it("处理后差异清单里不再出现（这正是 bug 的表现）", async () => {
+    await makeSkill(join(libraryDir(), "gone"), { "SKILL.md": "库版\n" });
+    const outside = join(DISK, "proj", ".claude", "skills", "gone");
+    await makeSkill(outside, { "SKILL.md": "别的\n" });
+
+    const [divergence] = await findDivergences([hitFor(outside, "gone")]);
+    await linkToLibrary(divergence!);
+
+    // 已变成链接 → findDivergences 会跳过链接，清单为空
+    const after = await findDivergences([
+      {
+        adoptable: true,
+        id: "gone",
+        inLibrary: false,
+        isLink: true,
+        path: outside,
+        target: join(libraryDir(), "gone"),
+      },
+    ]);
+    expect(after).toEqual([]);
+  });
+
+  it("用项目那份覆盖：本体库变成项目内容，两处都指向它", async () => {
+    await makeSkill(join(libraryDir(), "take2"), { "SKILL.md": "旧库版\n" });
+    const outside = join(DISK, "proj", ".claude", "skills", "take2");
+    await makeSkill(outside, { "SKILL.md": "项目版（要保留）\n" });
+
+    const [divergence] = await findDivergences([hitFor(outside, "take2")]);
+    await adoptOutside(divergence!);
+    await linkToLibrary(divergence!);
+
+    expect(await readFile(join(libraryDir(), "take2", "SKILL.md"))).toBe(
+      "项目版（要保留）\n"
+    );
+    expect((await lstat(outside)).isSymbolicLink()).toBe(true);
+    expect(await readFile(join(outside, "SKILL.md"))).toBe(
+      "项目版（要保留）\n"
+    );
+  });
+});
+
 describe("同 id 多份时逐轮重算", () => {
   it("处理完一处后，另一处的差异要基于新的本体库内容", async () => {
     await makeSkill(join(libraryDir(), "tri"), { "SKILL.md": "版本A\n" });

@@ -1,3 +1,4 @@
+import { symlink } from "node:fs/promises";
 import { copy, ensureDir, isAccessible, remove } from "@visulima/fs";
 import { join } from "@visulima/path";
 import { calculateDirectoryHash } from "../utils/hash";
@@ -88,12 +89,27 @@ export function touchedFiles(divergence: Divergence): string[] {
 }
 
 /**
- * 用外部位置的内容覆盖本体库，然后把外部换成链接。
+ * 用外部位置的内容覆盖本体库。
  *
- * 用在「编辑器里改完，决定以这一份为准」之后。
+ * 用在「决定以项目那份为准」之后。调用方随后要 linkToLibrary 收尾。
  */
 export async function adoptOutside(divergence: Divergence): Promise<void> {
   await remove(divergence.library);
   await ensureDir(join(divergence.library, ".."));
   await copy(divergence.outside, divergence.library, { recursive: true });
+}
+
+/**
+ * 删掉外部位置，换成指向本体库的链接。
+ *
+ * 与 normalizeOne 的区别：**不做内容比对**。
+ * normalizeOne 的 diverged 守卫是给自动批量用的 —— 那时没人做决定，
+ * 内容不同就必须保守停手。而走到这里意味着用户已经明确决定了
+ * 「以本体库为准，丢弃外部那份」，再拦一次就是把用户的决定挡掉。
+ */
+export async function linkToLibrary(divergence: Divergence): Promise<void> {
+  await remove(divergence.outside);
+  await ensureDir(join(divergence.outside, ".."));
+  // junction 与 skills.sh 保持一致：Windows 下不需要管理员权限
+  await symlink(divergence.library, divergence.outside, "junction");
 }

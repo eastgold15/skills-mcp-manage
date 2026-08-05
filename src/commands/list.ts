@@ -1,10 +1,12 @@
+import { isAccessible } from "@visulima/fs";
+import { scopeDir } from "../core/paths";
 import { outsiders, readScanCache, reevaluate } from "../core/scan";
 import type { SkillView, SyncStatus } from "../core/types";
 import { buildViews } from "../core/view";
 import { colors } from "../ui/colors";
 import { printTable } from "../ui/prompts";
 
-/** 状态列的显示文本 */
+/** 状态列的着色 */
 const STATUS_TEXT: Record<SyncStatus, (text: string) => string> = {
   behind: colors.success,
   conflicted: colors.warning,
@@ -20,10 +22,20 @@ const STATUS_LABEL: Record<SyncStatus, string> = {
   conflicted: "有冲突待解",
   diverged: "有新版+本地改",
   "local-only": "本地已改",
-  "no-upstream": "—",
+  "no-upstream": "-",
   unknown: "未检查",
   "up-to-date": "已是最新",
 };
+
+/**
+ * 启用标记用半角字符。
+ *
+ * ● ○ — 属于 Unicode「东亚歧义宽度」：tabular 按全角（2 格）算，
+ * 终端却按半角（1 格）渲染，于是每个这样的单元格都少一格，整列错位。
+ * 纯中文列反而没问题 —— 中文是明确的全角。换半角字符最省事。
+ */
+const ON = "v";
+const OFF = "-";
 
 /** 状态列文本，带新鲜度 */
 function statusCell(view: SkillView): string {
@@ -31,7 +43,7 @@ function statusCell(view: SkillView): string {
   const label = STATUS_LABEL[view.status];
 
   if (view.status === "conflicted") {
-    return paint(`${label}（${view.conflicts}）`);
+    return paint(`${label} ${view.conflicts}`);
   }
   // 已是最新／本地已改这类结论有时效，标上日期免得误以为是实时的
   if (
@@ -109,6 +121,9 @@ function summarize(views: SkillView[], hidden: number): void {
  *  - 状态：上次检查的结论，回答**要不要** update
  * 合成一列会让人以为「可更新」等于「有新版本」，实际跑 update 却
  * 提示无变化 —— 这正是原先的设计问题。
+ *
+ * 项目列只在当前目录确实是个项目（有 .claude/skills）时才出现，
+ * 否则那一列全是 OFF，纯占宽度。
  */
 export async function list(
   projectPath: string,
@@ -133,16 +148,33 @@ export async function list(
     return;
   }
 
-  const rows = views.map((v) => [
-    v.orphaned ? colors.gray(v.id) : v.id,
-    v.tracked ? colors.info("已追踪") : colors.gray("无"),
-    statusCell(v),
-    v.enabledGlobal ? colors.info("●") : colors.gray("○"),
-    v.enabledProject ? colors.info("●") : colors.gray("○"),
-    v.orphaned ? colors.warning("已失联") : "",
-  ]);
+  const projectRoot = scopeDir("project", projectPath);
+  const inProject = await isAccessible(projectRoot);
 
-  printTable(["ID", "上游", "状态", "全局", "项目", ""], rows);
+  const headers = ["ID", "上游", "状态", "全局"];
+  if (inProject) {
+    headers.push("项目");
+  }
+  headers.push("");
+
+  const rows = views.map((v) => {
+    const row = [
+      v.orphaned ? colors.gray(v.id) : v.id,
+      v.tracked ? colors.info("已追踪") : colors.gray("无"),
+      statusCell(v),
+      v.enabledGlobal ? colors.info(ON) : colors.gray(OFF),
+    ];
+    if (inProject) {
+      row.push(v.enabledProject ? colors.info(ON) : colors.gray(OFF));
+    }
+    row.push(v.orphaned ? colors.warning("已失联") : "");
+    return row;
+  });
+
+  printTable(headers, rows);
+  if (inProject) {
+    console.log(colors.gray(`项目：${projectPath}`));
+  }
   summarize(views, hidden);
   await hintPending();
 }

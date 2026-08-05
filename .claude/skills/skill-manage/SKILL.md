@@ -50,6 +50,8 @@ JSON 每项形如：
   "conflicts": 0, "enabledGlobal": false, "enabledProject": true, "orphaned": false }
 ```
 
+表格里 `v` 表示已启用、`-` 表示未启用。**"项目"列只在当前目录确实有 `.claude/skills` 时才出现** —— 它指的是你执行命令所在的目录，不在项目里时那一列全是 `-`，纯占宽度。JSON 输出不受此影响，`enabledProject` 始终存在。
+
 **`tracked` 与 `status` 是两件事，别混：**
 
 - `tracked: true` = lock 里有上游记录，**能**执行 update。与"有没有新版本"无关。

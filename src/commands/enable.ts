@@ -8,15 +8,48 @@ import {
   printWarning,
 } from "../ui/prompts";
 
+/** 逐个建链接并汇报结果 */
+async function applyEnable(
+  scope: Scope,
+  projectPath: string,
+  ids: string[]
+): Promise<void> {
+  let done = 0;
+  for (const id of ids) {
+    const outcome = await enableSkill(scope, projectPath, id);
+    if (outcome === "enabled") {
+      done += 1;
+    } else if (outcome === "occupied") {
+      printWarning(`${id}：该位置已被真实目录或外部链接占用，跳过`);
+    } else if (outcome === "missing") {
+      printWarning(`${id}：本体库中不存在，跳过`);
+    } else {
+      printWarning(`${id}：已启用，跳过`);
+    }
+  }
+
+  if (done > 0) {
+    printSuccess(`已启用 ${done} 个 skill`);
+  }
+}
+
 /**
  * 批量启用：从本体库挑若干 skill 链接到作用域。
  *
  * 不联网、不拷贝 —— 建 junction 即完成，第二个项目启用同一 skill 零成本。
+ * 传了 ids 就直接执行，不进 TUI —— 这条路径给 AI 与脚本用。
  */
 export async function enable(
   projectPath: string,
-  presetScope?: Scope
+  presetScope?: Scope,
+  ids?: string[]
 ): Promise<void> {
+  // 直接指名要启用哪些：跳过全部交互
+  if (ids && ids.length > 0) {
+    await applyEnable(presetScope ?? "project", projectPath, ids);
+    return;
+  }
+
   const views = (await buildViews(projectPath)).filter((v) => !v.orphaned);
 
   if (views.length === 0) {
@@ -42,7 +75,7 @@ export async function enable(
     return;
   }
 
-  const ids = await askMultiSelect<string>(
+  const picked = await askMultiSelect<string>(
     `选择要启用到${scope === "global" ? "全局" : "本项目"}的 skill（空格多选）`,
     candidates.map((v) => ({
       hint: v.updatable ? undefined : "无上游",
@@ -51,24 +84,10 @@ export async function enable(
     }))
   );
 
-  if (ids.length === 0) {
+  if (picked.length === 0) {
     printWarning("未选择任何 skill");
     return;
   }
 
-  let done = 0;
-  for (const id of ids) {
-    const outcome = await enableSkill(scope, projectPath, id);
-    if (outcome === "enabled") {
-      done += 1;
-    } else if (outcome === "occupied") {
-      printWarning(`${id}：该位置已被真实目录或外部链接占用，跳过`);
-    } else if (outcome === "missing") {
-      printWarning(`${id}：本体库中不存在，跳过`);
-    }
-  }
-
-  if (done > 0) {
-    printSuccess(`已启用 ${done} 个 skill`);
-  }
+  await applyEnable(scope, projectPath, picked);
 }

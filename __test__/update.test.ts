@@ -326,3 +326,80 @@ describe("updateSkill 端到端更新", () => {
     ).toBe("原始\n");
   });
 });
+
+/**
+ * 真实事故的回归防线。
+ *
+ * 起因：lock 里 npm-publish 的 skillPath 记作 skills/npm-publish/SKILL.md，
+ * 上游实际在 modules/plugin-kit/skills/npm-publish/ 下。sparse-checkout 对
+ * 不存在的路径不报错，只静默给出空目录 → 四象限判成「上游删光了」→
+ * 逐文件全判 deleted-upstream → 本体库里的 SKILL.md 与 README.md 被真删掉。
+ */
+describe("上游路径与 lock 声明不符时不得删数据", () => {
+  it("lock 路径不对但上游有同名目录时，自动纠正并正常更新", async () => {
+    await seedUpstream({
+      "modules/plugin-kit/skills/npm-publish/SKILL.md": "上游内容\n",
+      "modules/plugin-kit/skills/npm-publish/scripts/run.sh": "echo hi\n",
+    });
+    // lock 声明的是错路径，与真实事故一致
+    await seedAgents(
+      "npm-publish",
+      { "SKILL.md": "上游内容\n", "scripts/run.sh": "echo hi\n" },
+      "skills/npm-publish/SKILL.md"
+    );
+
+    const result = await updateSkill("npm-publish");
+
+    expect(isUpdateError(result)).toBe(false);
+    // 本地文件必须都还在 —— 事故里这两个被删了
+    expect(await readSkill("npm-publish", "SKILL.md")).toBe("上游内容\n");
+    expect(await readSkill("npm-publish", "scripts/run.sh")).toBe("echo hi\n");
+  });
+
+  it("纠正路径后仍能正确快进上游改动", async () => {
+    await seedUpstream({
+      "modules/plugin-kit/skills/npm-publish/SKILL.md": "v1\n",
+    });
+    await seedAgents(
+      "npm-publish",
+      { "SKILL.md": "v1\n" },
+      "skills/npm-publish/SKILL.md"
+    );
+    await updateSkill("npm-publish");
+
+    await commitUpstream({
+      "modules/plugin-kit/skills/npm-publish/SKILL.md": "v2\n",
+    });
+    const result = await updateSkill("npm-publish");
+
+    if (isUpdateError(result)) {
+      throw new Error("不应出错");
+    }
+    expect(result.quadrant).toBe(2);
+    expect(await readSkill("npm-publish", "SKILL.md")).toBe("v2\n");
+  });
+
+  it("上游压根没有这个 skill 时抛错，绝不删本地", async () => {
+    await seedUpstream({ "skills/other/SKILL.md": "别的\n" });
+    await seedAgents(
+      "gone",
+      { "SKILL.md": "我的内容\n" },
+      "skills/gone/SKILL.md"
+    );
+
+    await expect(updateSkill("gone")).rejects.toThrow(/找不到/);
+    // 关键：报错也不能动本地
+    expect(await readSkill("gone", "SKILL.md")).toBe("我的内容\n");
+  });
+
+  it("上游有多个同名 skill 目录时报错而不是乱猜", async () => {
+    await seedUpstream({
+      "a/skills/dup/SKILL.md": "甲\n",
+      "b/skills/dup/SKILL.md": "乙\n",
+    });
+    await seedAgents("dup", { "SKILL.md": "我的\n" }, "skills/dup/SKILL.md");
+
+    await expect(updateSkill("dup")).rejects.toThrow(/多个/);
+    expect(await readSkill("dup", "SKILL.md")).toBe("我的\n");
+  });
+});

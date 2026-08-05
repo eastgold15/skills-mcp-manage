@@ -2,7 +2,7 @@ import { isAccessible, remove } from "@visulima/fs";
 import { join } from "@visulima/path";
 import { calculateDirectoryHash } from "../utils/hash";
 import { decideQuadrant, mapDirectory } from "./diff";
-import { fetchUpstream } from "./fetch";
+import { fetchUpstream, UpstreamPathError } from "./fetch";
 import { mergeDirectories, snapshotBase } from "./merge";
 import { agentsRoot, baseDir, skillDir } from "./paths";
 import { syncFromLock, writeState } from "./state";
@@ -71,6 +71,16 @@ export async function updateSkill(
       ours: await mapDirectory(ours),
       theirs: await mapDirectory(theirs),
     };
+
+    // 纵深防御：上游空、本地非空一定是拉取出了问题，不是「上游删光了」。
+    // 若放过去，逐文件判定会全判 deleted-upstream，把本体库删空。
+    // fetch 已在 checkout 前核对过路径，这里兜住它之外的所有失败方式。
+    if (maps.theirs.size === 0 && maps.ours.size > 0) {
+      throw new UpstreamPathError(
+        `${id}：上游没拉到任何文件，已中止以避免误删本地内容`
+      );
+    }
+
     const verdict = decideQuadrant(maps.base, maps.ours, maps.theirs);
     let conflicts: string[] = [];
 

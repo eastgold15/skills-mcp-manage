@@ -7,16 +7,46 @@ import {
   printWarning,
 } from "../ui/prompts";
 
+/** 逐个删链接并汇报结果 */
+async function applyDisable(
+  scope: Scope,
+  projectPath: string,
+  ids: string[]
+): Promise<void> {
+  let done = 0;
+  for (const id of ids) {
+    const outcome = await disableSkill(scope, projectPath, id);
+    if (outcome === "disabled") {
+      done += 1;
+    } else if (outcome === "not-managed") {
+      printWarning(`${id}：非本工具建立，拒绝删除`);
+    } else {
+      printWarning(`${id}：未启用，跳过`);
+    }
+  }
+
+  if (done > 0) {
+    printSuccess(`已卸载 ${done} 个 skill（本体库未受影响）`);
+  }
+}
+
 /**
  * 批量卸载：删除作用域下的链接。本体库不受影响。
  *
  * 只列出我们建的链接 —— 外部工具建的链接与手写的真实目录不在候选里，
  * 避免误删不属于本工具的东西。
+ * 传了 ids 就直接执行，不进 TUI —— 这条路径给 AI 与脚本用。
  */
 export async function disable(
   projectPath: string,
-  presetScope?: Scope
+  presetScope?: Scope,
+  ids?: string[]
 ): Promise<void> {
+  if (ids && ids.length > 0) {
+    await applyDisable(presetScope ?? "project", projectPath, ids);
+    return;
+  }
+
   const scope =
     presetScope ??
     (await askSelect<Scope>("从哪个作用域卸载？", [
@@ -38,27 +68,15 @@ export async function disable(
     return;
   }
 
-  const ids = await askMultiSelect<string>(
+  const picked = await askMultiSelect<string>(
     `选择要从${label}作用域卸载的 skill（空格多选）`,
     managed.map((e) => ({ label: e.id, value: e.id }))
   );
 
-  if (ids.length === 0) {
+  if (picked.length === 0) {
     printWarning("未选择任何 skill");
     return;
   }
 
-  let done = 0;
-  for (const id of ids) {
-    const outcome = await disableSkill(scope, projectPath, id);
-    if (outcome === "disabled") {
-      done += 1;
-    } else if (outcome === "not-managed") {
-      printWarning(`${id}：非本工具建立，拒绝删除`);
-    }
-  }
-
-  if (done > 0) {
-    printSuccess(`已卸载 ${done} 个 skill（本体库未受影响）`);
-  }
+  await applyDisable(scope, projectPath, picked);
 }

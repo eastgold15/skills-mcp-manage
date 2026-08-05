@@ -54,27 +54,53 @@ const SCOPE_OPTIONS = [
 cli.addCommand({
   alias: "ls",
   description: "列出本体库全部 skill 及其启用状态",
-  execute: async () => {
-    await list(process.cwd());
+  examples: ["agent list", "agent list --json"],
+  execute: async ({ options }: Toolbox) => {
+    await list(process.cwd(), Boolean(options.json));
   },
   name: "list",
+  options: [
+    {
+      description: "输出 JSON，便于脚本与 AI 解析",
+      name: "json",
+      type: Boolean,
+    },
+  ],
 });
 
 cli.addCommand({
-  description: "批量启用 skill 到全局或项目（TUI 多选）",
-  examples: ["agent enable", "agent enable --global"],
-  execute: async ({ options }: Toolbox) => {
-    await enable(process.cwd(), pickScope(options));
+  argument: {
+    description: "skill ID，可传多个；省略则进入 TUI 多选",
+    name: "ids",
+    type: String,
+  },
+  description: "批量启用 skill 到全局或项目（传 ID 则非交互）",
+  examples: [
+    "agent enable",
+    "agent enable --global",
+    "agent enable codegraph ast-grep -p",
+  ],
+  execute: async ({ argument, options }: Toolbox) => {
+    await enable(process.cwd(), pickScope(options), argument);
   },
   name: "enable",
   options: SCOPE_OPTIONS,
 });
 
 cli.addCommand({
+  argument: {
+    description: "skill ID，可传多个；省略则进入 TUI 多选",
+    name: "ids",
+    type: String,
+  },
   description: "批量卸载 skill（只删本工具建立的链接，本体库不动）",
-  examples: ["agent disable", "agent disable --global"],
-  execute: async ({ options }: Toolbox) => {
-    await disable(process.cwd(), pickScope(options));
+  examples: [
+    "agent disable",
+    "agent disable --global",
+    "agent disable codegraph -p",
+  ],
+  execute: async ({ argument, options }: Toolbox) => {
+    await disable(process.cwd(), pickScope(options), argument);
   },
   name: "disable",
   options: SCOPE_OPTIONS,

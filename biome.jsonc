@@ -7,8 +7,24 @@
         "useAwait": "off"
       },
       "performance": {
-        "useTopLevelRegex": "off"
+        "useTopLevelRegex": "off",
+        // 本项目的循环多为顺序文件操作（建链接、逐文件合并、删除），
+        // 并发会互相干扰或让进度提示错乱，必须逐个 await
+        "noAwaitInLoops": "off"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["__test__/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            // 测试里已断言存在的对象再取字段，非空断言比层层可选链更清晰
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    }
+  ]
 }

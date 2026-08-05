@@ -1,33 +1,51 @@
-import { confirm, multiselect, select, text } from "@clack/prompts";
+import { confirm, isCancel, multiselect, select, text } from "@clack/prompts";
 import { createTable } from "@visulima/tabular";
 import { colors } from "./colors";
 
+/** 用户按 Ctrl+C / Esc 取消时抛出，由命令层决定如何收场 */
+export class PromptCancelled extends Error {
+  constructor() {
+    super("已取消");
+    this.name = "PromptCancelled";
+  }
+}
+
+function unwrap<T>(value: T | symbol): T {
+  if (isCancel(value)) {
+    throw new PromptCancelled();
+  }
+  return value as T;
+}
+
 export async function askSelect<T>(
   message: string,
-  choices: Array<{ label: string; value: T }>
+  choices: Array<{ label: string; value: T; hint?: string }>
 ): Promise<T> {
   const result = await select({
     message,
     options: choices.map((c) => ({
       label: c.label,
       value: c.value,
+      ...(c.hint ? { hint: c.hint } : {}),
     })) as unknown as Parameters<typeof select>[0]["options"],
   });
-  return result as T;
+  return unwrap(result) as T;
 }
 
 export async function askMultiSelect<T>(
   message: string,
-  choices: Array<{ label: string; value: T }>
+  choices: Array<{ label: string; value: T; hint?: string }>
 ): Promise<T[]> {
   const result = await multiselect({
     message,
     options: choices.map((c) => ({
       label: c.label,
       value: c.value,
+      ...(c.hint ? { hint: c.hint } : {}),
     })) as unknown as Parameters<typeof multiselect>[0]["options"],
+    required: false,
   });
-  return result as T[];
+  return unwrap(result) as T[];
 }
 
 export async function askText(
@@ -38,14 +56,14 @@ export async function askText(
     message,
     placeholder,
   });
-  return result as string;
+  return unwrap(result) as string;
 }
 
 export async function askConfirm(message: string): Promise<boolean> {
   const result = await confirm({
     message,
   });
-  return result as boolean;
+  return unwrap(result) as boolean;
 }
 
 export function printTable(headers: string[], rows: string[][]): void {

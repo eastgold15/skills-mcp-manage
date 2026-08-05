@@ -27,6 +27,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .cache
 *.tsbuildinfo
 
+# 测试临时目录
+.test-tmp
+
 # IntelliJ based IDEs
 .idea
 

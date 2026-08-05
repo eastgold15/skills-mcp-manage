@@ -1,375 +1,164 @@
-# Agent Skills & MCP 统一管理 CLI — 真实设计文档
+# agent — skills 作用域管理与三路合并
 
-> 版本：v2.0（修正版）
-> 语言：TypeScript
-> 运行时：Bun
-> 状态：设计定型，可进入开发
+配合 [skills.sh](https://www.skills.sh/) 使用。它负责下载与本体库，本工具只做它没做的两件事：
 
+1. **作用域管理** —— 批量把本体库的 skill 启用到全局或项目（TUI 多选，不用一个个装）
+2. **三路合并** —— 上游更新时，在保留你本地修改的基础上吸收新版本
 
-## 一、项目背景与真实痛点
+目前只支持 Claude Code。
 
-### 1.1 我们到底在管理什么？
+## 解决什么问题
 
-在使用 AI Agent（如 Cline、Cursor、OpenCode、Claude Code）的过程中，我们会积累两类“能力资产”：
+| 痛点 | 解法 |
+|---|---|
+| **来源混乱**：skill 散落各处，`~/.claude/skills` 里混着链接、副本、别的工具建的东西 | `doctor` 把每个条目的真实形态摊开：已纳管 / 外部 / 副本 |
+| **作用域不清**：分不清哪些全局通用、哪些项目专用 | `list` 用两列显示每个 skill 在全局与项目的启用状态；`enable`/`disable` 按作用域批量操作 |
+| **更新困难**：上游更新时难以保住自己的修改 | 四象限判定 + 文件级三路合并 |
 
-| 类型 | 它到底是什么？ | 实际存储形态 |
-|------|---------------|-------------|
-| **Skill** | 一个包含提示词、指令、脚本的文件夹（通常含 `SKILL.md`） | 某个 Git 大仓库（Monorepo）的**子目录** |
-| **MCP Server** | 一段 JSON 配置：`{ command, args, env }` | **一个 JSON 块**，写入项目的 `.mcp/settings.json` |
-
-**关键发现**：上游作者们**没有统一标准**——有人把单个 Skill 作为一个独立仓库，有人把几十个 Skills 塞进一个 Monorepo；MCP Server 也是一样，有些是独立 npm 包，有些是 Monorepo 里的一个子项目，有些甚至是一个聚合器。
-
-### 1.2 用户真正想要什么？
-
-无论上游怎么组织，用户（你）的诉求始终是：
-
-1. **安装**：把某个 Skill 或 MCP 弄到当前项目里用起来
-2. **修改**：根据自己的经验调整它
-3. **更新**：上游升级了，能拉下来并融合自己的修改
-4. **发布**：把修改后的版本存到自己的 GitHub 组织，供团队共享
-5. **多项目隔离**：项目 A 和项目 B 用不同版本，互不干扰
-
-### 1.3 核心矛盾
-
-> **上游把多个能力单元打包在一起，但用户想按单个能力单元来管理。**
-
-用户只想改 `codegraph` 这个 Skill，但它所在的 `dev-skills` 大仓库里还有 `find-skills`、`other-skill` 等十几个 Skill。上游更新时，整个大仓库都变了，用户只关心自己改过的那一个。
-
-
-## 二、核心解决方案：依赖表（Dependency Table）
-
-**不依赖上游的仓库结构，在用户侧维护一张“依赖表”**，记录每个 Skill/MCP 的完整元数据。
-
-### 2.1 依赖表结构（真实 Schema）
-
-```json
-{
-  "version": 2,
-  "capabilities": {
-    "codegraph": {
-      "kind": "skill",
-      "displayName": "Code Graph Analyzer",
-      "source": {
-        "type": "git-subdir",
-        "repoUrl": "https://github.com/onsager-ai/dev-skills.git",
-        "subPath": "skills/codegraph"
-      },
-      "status": "modified",
-      "version": {
-        "hash": "a4677e900bdaef77b87cf2f539f9b1bf975aa804",
-        "lastUpstreamHash": "7h8d9s2abc..."
-      },
-      "installPath": "./skills/codegraph",
-      "updatedAt": "2026-07-01T10:00:00.000Z"
-    },
-    "filesystem-mcp": {
-      "kind": "mcp",
-      "displayName": "Filesystem MCP",
-      "source": {
-        "type": "registry",
-        "registryUrl": "https://github.com/modelcontextprotocol/servers",
-        "entryKey": "filesystem"
-      },
-      "status": "customized",
-      "version": {
-        "semver": "1.0.0"
-      },
-      "installPath": "./.mcp/settings.json",
-      "config": {
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"],
-        "env": { "DEBUG": "true" }
-      },
-      "updatedAt": "2026-07-01T09:30:00.000Z"
-    },
-    "my-custom-skill": {
-      "kind": "skill",
-      "source": { "type": "created" },
-      "status": "created",
-      "installPath": "./skills/my-custom-skill",
-      "updatedAt": "2026-07-01T11:00:00.000Z"
-    }
-  }
-}
-```
-
-### 2.2 状态机（核心）
-
-```
-安装时      本地修改后     执行 publish    推送成功
-UPSTREAM ──────────────▶ MODIFIED ──────────────────▶ FORKED
-    │                        │                           │
-    │ (agent reset)          │ (agent pull)              │
-    ▼                        ▼                           ▼
-UPSTREAM                 UPSTREAM                   FORKED
-(丢失本地改动)           (回退到上游)               (同步后)
-```
-
-| 状态 | 含义 | `source.repoUrl` 指向 |
-|------|------|----------------------|
-| `upstream` | 纯上游代码，未改动 | 官方源 |
-| `modified` | 本地有改动，尚未 Fork/推送 | 官方源（未变） |
-| `forked` | 已 Fork 到组织，代码已同步 | 组织仓库 |
-| `created` | 本地新建的 Skill，未关联远程 | 无 |
-| `published` | 新建的 Skill 已推送到组织 | 组织仓库 |
-
-
-## 三、完整数据流转架构图
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                              官方源层 (L0 - Upstream)                                       │
-│                                                                                             │
-│  Skills 大仓库 (Monorepo)                         MCP 注册表                                │
-│  ┌─────────────────────────────┐                ┌─────────────────────────────┐            │
-│  │ onsager-ai/dev-skills.git   │                │ modelcontextprotocol/servers │            │
-│  │ ├── skills/codegraph/       │                │ ├── filesystem.json         │            │
-│  │ ├── skills/find-skills/     │                │ ├── postgres.json           │            │
-│  │ └── skills/other/           │                │ └── github.json             │            │
-│  ├─────────────────────────────┤                └─────────────────────────────┘            │
-│  │ vercel-labs/skills.git      │                                                           │
-│  │ └── skills/find-skills/     │                                                           │
-│  └─────────────────────────────┘                                                           │
-└─────────────────────────────────────┬───────────────────────────────────────────────────────┘
-                                      │
-              git clone               │  fetch 模板
-              (完整 Monorepo)         │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                           本地缓存层 (L1 - ~/.agent/)                                       │
-│                                                                                             │
-│  Skills 缓存池                             MCP 缓存                                        │
-│  ┌─────────────────────────────┐          ┌─────────────────────────────┐                  │
-│  │ ~/.agent/skills/            │          │ ~/.agent/mcp/registry/      │                  │
-│  │ ├── dev-skills/  (完整仓库) │          │ ├── filesystem.json         │                  │
-│  │ │   ├── .git/              │          │ ├── postgres.json           │                  │
-│  │ │   └── skills/            │          │ └── github.json             │                  │
-│  │ │       ├── codegraph/     │          └─────────────────────────────┘                  │
-│  │ │       └── find-skills/   │                                                           │
-│  │ ├── skills/    (完整仓库)  │                                                           │
-│  │ └── prompts/   (完整仓库)  │                                                           │
-│  └─────────────────────────────┘                                                           │
-└─────────────────────────────────────┬───────────────────────────────────────────────────────┘
-                                      │
-              ┌───────────────────────┴───────────────────────┐
-              │                                               │
-              ▼                                               ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                           项目配置层 (L2 - Project)                                         │
-│                                                                                             │
-│  项目根目录 /.agent/deps.json  ←── 依赖表（唯一的真理源）                                  │
-│                                                                                             │
-│  ┌─────────────────────────────────────────────────────────────────────────────────────────┐│
-│  │ 依赖表记录:                                                                           ││
-│  │ • 每个 Skill 的 source (repoUrl + subPath) + status + hash                            ││
-│  │ • 每个 MCP 的 source (registryKey) + status + config 覆盖                             ││
-│  └─────────────────────────────────────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────┬───────────────────────────────────────────────────────┘
-                                      │
-            ┌─────────────────────────┴─────────────────────────┐
-            │                                                   │
-            ▼                                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                           项目运行环境 (L3 - Runtime)                                       │
-│                                                                                             │
-│  Skills 运行时目录                          MCP 配置                                        │
-│  ┌─────────────────────────────┐          ┌─────────────────────────────┐                  │
-│  │ ./skills/                   │          │ ./.mcp/settings.json       │                  │
-│  │ ├── codegraph/   (子目录)   │          │ {                           │                  │
-│  │ │   └── SKILL.md            │          │   "mcpServers": {          │                  │
-│  │ ├── find-skills/ (子目录)   │          │     "filesystem": {        │                  │
-│  │ └── my-custom/   (新建)     │          │       "command": "npx",    │                  │
-│  └─────────────────────────────┘          │       "args": [...]        │                  │
-│                                            │     }                       │                  │
-│  AI Agent 读取:                           │   }                         │                  │
-│  Cline / Cursor / OpenCode                │ }                           │                  │
-│                                            └─────────────────────────────┘                  │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-
-## 四、命令设计（用户视角）
-
-### 4.1 命令总览
-
-| 命令 | 作用 | 示例 |
-|------|------|------|
-| `agent init` | 初始化 `~/.agent/` 目录结构 | `agent init` |
-| `agent install` | 安装一个 Skill 或 MCP 到当前项目 | `agent install codegraph` |
-| `agent list` | 列出所有已安装的能力单元 | `agent list` |
-| `agent status` | 检测哪些文件被修改了 | `agent status` |
-| `agent update` | 拉取上游更新，处理冲突 | `agent update codegraph` |
-| `agent publish` | 发布修改到 GitHub 组织 | `agent publish --all` |
-| `agent create` | 创建新的 Skill | `agent create my-skill` |
-| `agent sync` | 根据依赖表同步项目文件 | `agent sync` |
-| `agent reset` | 丢弃本地修改，回退到上游 | `agent reset codegraph` |
-
-### 4.2 典型工作流
+## 安装
 
 ```bash
-# 1. 第一次使用，初始化
-agent init
-
-# 2. 安装一个 Skill
-agent install codegraph --from https://github.com/onsager-ai/dev-skills.git --path skills/codegraph
-
-# 3. 修改了 ./skills/codegraph/SKILL.md
-#    ... 编辑文件 ...
-
-# 4. 查看状态
-agent status
-# 输出: codegraph (modified) - 检测到本地修改
-
-# 5. 上游更新了，拉取并处理冲突
-agent update codegraph
-# 自动检测到冲突，打开 VS Code 合并编辑器
-
-# 6. 确认没问题了，发布到组织
-agent publish codegraph --org my-skills-mcp
-
-# 7. 其他项目想用这个 Skill（已指向组织）
-cd ../project-b
-agent install codegraph --from https://github.com/my-skills-mcp/dev-skills.git --path skills/codegraph
+bun install
+bun run build      # 产出 dist/index.mjs 并 npm link
 ```
 
+开发时直接 `bun run src/index.ts <命令>`。
 
-## 五、冲突处理：只做编排，不做合并
-
-### 5.1 核心原则
-
-> **CLI 只负责检测冲突和准备文件，真正的合并交给 VS Code。**
-
-CLI 不实现任何 diff 算法，不处理 `<<<<<<< HEAD` 标记。它只做三件事：
-1. **检测**：通过比对 hash，判断哪些 Skill 有冲突
-2. **准备**：提取 base、ours、theirs 三个版本的文件
-3. **调用**：`code --wait --merge`，等用户关掉编辑器后再继续
-
-### 5.2 冲突检测流程
-
-```
-agent update codegraph
-
-1. 读取依赖表，找到 codegraph 条目
-2. 检查 status:
-   ├── status == "upstream" → 直接拉取，覆盖项目文件，无需用户介入
-   └── status == "modified" → 触发冲突解决流程
-
-冲突解决流程:
-3. 提取三个版本:
-   - base: 缓存中旧的原始版本 (从 lastUpstreamHash 还原)
-   - ours: 当前项目里的修改版本
-   - theirs: 刚 pull 下来的上游最新版本
-4. 调用 code --wait --merge ours theirs base ours
-5. 用户关闭编辑器后，重新计算 hash
-6. 更新依赖表
-```
-
-### 5.3 用户交互（终端输出）
+## 命令
 
 ```bash
-$ agent update codegraph
-
-📦 检查更新: onsager-ai/dev-skills
-  ├── find-skills  (未修改) ✅ 已自动更新
-  └── codegraph    (已修改) ⚠️ 检测到冲突！
-
-─────────────────────────────────────────────
-🔄 正在打开 VS Code 合并编辑器...
-
-  本地修改: 修复了提示词逻辑 (hash: a4677e9)
-  上游更新: 新增了 Python 支持 (hash: 7h8d9s2)
-
-  请选择操作:
-  ❯ 1. 打开 VS Code 手动合并 (推荐)
-    2. 全部使用我的版本 (丢弃上游)
-    3. 全部使用上游版本 (丢弃我的修改)
-    4. 跳过，稍后处理
-
-  → 选择: 1
-
-⏳ 等待 VS Code 关闭...
-✅ 冲突已解决 (新 hash: 8f9h2d...)
+agent list                    # 本体库全景 + 启用状态
+agent enable                  # 批量启用（先选作用域，再多选 skill）
+agent enable --global         # 直接指定全局，跳过作用域询问
+agent disable --project       # 批量卸载
+agent update                  # 多选要更新的 skill
+agent update codegraph        # 更新单个
+agent doctor                  # 诊断作用域目录的真实构成
 ```
 
-
-## 六、技术选型（真实且克制）
-
-| 模块 | 工具 | 理由 |
-|------|------|------|
-| **运行时** | Bun | 原生 TS，编译成单二进制，跨平台 |
-| **命令解析** | boune | Bun 原生，类型安全，零依赖 |
-| **交互式提示** | @clack/prompts | 简洁美观，覆盖 95% 交互场景 |
-| **加载动画** | ora | 经典，稳定 |
-| **彩色输出** | chalk | 事实标准 |
-| **全屏 TUI** | 暂不引入 | 初期用 @clack 足够，需要全屏时再评估 ink |
-| **Git 操作** | simple-git | 稳定、Promise 友好 |
-| **文件操作** | fs-extra | 功能全面 |
-| **外部编辑器** | child_process.spawn | 调用 `code --wait --merge` |
-| **哈希计算** | crypto (内置) | 计算文件夹 SHA1 |
-
-
-## 七、代码结构（真实目录规划）
+## 目录约定
 
 ```
-packages/cli/
-├── src/
-│   ├── index.ts              # CLI 入口
-│   ├── commands/
-│   │   ├── init.ts
-│   │   ├── install.ts
-│   │   ├── list.ts
-│   │   ├── status.ts
-│   │   ├── update.ts
-│   │   ├── publish.ts
-│   │   ├── create.ts
-│   │   ├── sync.ts
-│   │   └── reset.ts
-│   ├── core/
-│   │   ├── types.ts          # 依赖表类型定义
-│   │   ├── manifest.ts       # 依赖表读写
-│   │   ├── scanner.ts        # 扫描本地缓存
-│   │   └── status-detector.ts # 检测修改状态
-│   ├── engines/
-│   │   ├── skill-engine.ts   # Skill 安装/更新/发布
-│   │   └── mcp-engine.ts     # MCP 安装/更新
-│   ├── git/
-│   │   ├── repo-manager.ts   # clone/pull/push
-│   │   └── remote-manager.ts # upstream/origin 管理
-│   ├── github/
-│   │   └── api.ts            # GitHub API 调用 (Fork)
-│   ├── utils/
-│   │   ├── hash.ts           # 计算文件夹 SHA1
-│   │   ├── path.ts           # 路径解析
-│   │   └── editor.ts         # 调用 VS Code
-│   └── ui/
-│       ├── prompts.ts        # @clack/prompts 封装
-│       ├── colors.ts         # chalk 封装
-│       └── spinner.ts        # ora 封装
-├── package.json
-├── tsconfig.json
-└── README.md
+~/.agents/
+  .skill-lock.json      skills.sh 的总账 —— 本工具只读，绝不回写
+  skills/<id>/          本体库，唯一实体
+  .base/<id>/           上次同步的上游快照（本工具建立）
+  .merge-state.json     上游投影 + 合并历史（本工具建立）
+
+~/.claude/skills/<id>   → junction 指向 ~/.agents/skills/<id>   全局作用域
+./.claude/skills/<id>   → junction 指向 ~/.agents/skills/<id>   项目作用域
 ```
 
+用 junction 而非 symlink：Windows 下不需要管理员权限或开发者模式，
+且 skills.sh 自己用的就是 junction。
 
-## 八、发布与分发
+**全链接架构**：本体库是唯一实体，作用域侧全是指针。所以
 
-- `bun build --compile` 编译成单文件，发布到 GitHub Releases
-- 同时发布 npm 包 `@agent/cli`，支持 `bunx @agent/cli`
-- GitHub Token 通过 `~/.agent/config.json` 或环境变量 `GITHUB_TOKEN` 配置
+- 改动即改本体，没有"项目副本"，不需要回流
+- 同一 skill 在全局与项目都启用时，两边指向同一目录，内容不可能不一致
+- 第二个项目启用同一 skill 零成本（不联网、不拷贝）
 
+## 数据流
 
-## 九、开发路线（5-7 工作日）
+```
+┌─── 上游 GitHub ─────────────────────────────┐
+└──────────────────┬──────────────────────────┘
+         skills.sh │ install/update    本工具 │ update
+                   ▼                          ▼
+┌═══ 本体库 ~/.agents/skills/ ════════════════┐
+│  skills.sh 写，本工具读                      │
+│  + .base/<id>/ 与 .merge-state.json         │
+└──┬────────────────────────┬─────────────────┘
+   │ junction               │ junction
+   ▼                        ▼
+~/.claude/skills/       ./.claude/skills/
+（全局）                  （项目）
+```
 
-| Phase | 内容 | 时间 |
-|-------|------|------|
-| **Phase 1** | 类型定义 + 依赖表读写 + `list` + `status`（检测 hash） | 1.5 天 |
-| **Phase 2** | `install`（git clone + 复制子目录 + 计算 hash）+ `sync` | 1.5 天 |
-| **Phase 3** | `update`（git pull + 冲突检测 + 调用 VS Code） | 1.5 天 |
-| **Phase 4** | `publish`（GitHub API Fork + git push + 更新依赖表） | 1 天 |
-| **Phase 5** | `create` + `reset` + 测试 + 文档 | 1 天 |
-| **总计** | | **6.5 天** |
+### 单向同步与 hash 门控
 
+`.skill-lock.json` → `.merge-state.json` **单向投影**，本工具的改动永不回写。
+方向恒定，所以不存在双真理源冲突。
 
-## 十、总结：一句话说清楚这个 CLI
+每次启动算一次 lock 的文件哈希：**一致就整个投影跳过，零成本**。
+不一致才重新吸取 —— 覆盖 `upstream` 段，保留 `base` 与 `lastMerge` 段。
 
-> **这是一个“依赖表管理器”——它不关心上游仓库怎么组织，只维护一张表，记录每个 Skill/MCP 的来源、状态和版本，负责安装、更新、冲突检测和发布。冲突合并交给 VS Code。**
+字段归属（决定谁能改它）：
+
+| 数据 | 真理源 |
+|---|---|
+| `upstream`（上游地址、monorepo 内路径） | skills.sh 的 lock，单向投影而来 |
+| `base`、`lastMerge` | 本工具，lock 同步时原样保留 |
+| 作用域启用状态 | **不落盘** —— 文件系统的链接实况就是真理，永不失同步 |
+
+lock 未记录但本体库里存在的 skill（如手动放进去的），
+以 `upstream: null` 纳入：**可启用，不可更新**。
+
+lock 里曾有、现已消失的条目标记 `orphaned` 而非删除，
+以免丢掉 base 快照与合并历史。
+
+## 三路合并
+
+### 四象限
+
+| | 本地改过 | 上游变过 | 动作 |
+|---|---|---|---|
+| 1 | 否 | 否 | 无需更新 |
+| 2 | 否 | 是 | 快进覆盖 |
+| 3 | 是 | 否 | 保留本地，不动 |
+| 4 | 是 | 是 | 文件级三路合并 |
+
+两个判定都以 `.base/` 快照为参照系，**不需要 commit**：
+
+- 本地改过？ `skills/<id>/` ≠ `.base/<id>/`
+- 上游变过？ 新拉取的 ≠ `.base/<id>/`
+
+三份数据全部来自本体库内部，不跨层：
+
+| 版本 | 来源 |
+|---|---|
+| base | `~/.agents/.base/<id>/` |
+| ours | `~/.agents/skills/<id>/`（工作区） |
+| theirs | 临时目录（sparse-checkout 只拉目标子目录） |
+
+存快照而非临时 clone 的好处：离线也能判"改过没"、monorepo 不必反复拉全仓。
+
+### 文件级粒度
+
+逐文件判定。上游改 `SKILL.md`、你改 `references/usage.md` → **自动合并，零冲突**。
+只有同一文件的同一处两边都改，才会留下 `<<<<<<<` 标记等你处理。
+
+上游新增的文件会取来，你新增的文件不会被抹掉，
+上游删除但你改过的文件会保留并报冲突。
+
+### 首次更新的限制
+
+`.base/` 是本工具引入的，已装的 skill 没有快照。
+首次更新某个 skill 时，只能把当前内容当作"上次同步态"来建立基线
+—— **本次判不出本地改动（只能走象限 1/2），第二次起才完整可用**。
+
+## 开发
+
+```bash
+bun test           # 80 个回归测试
+bun run type-check # tsc --noEmit
+bun run check      # ultracite
+```
+
+测试放 `__test__/`，用 `.test-tmp/` 下各自独立的子目录，互不干扰。
+`update.test.ts` 会起真实的本地 git 仓库做端到端验证。
+
+### 技术栈
+
+`@visulima/cerebro` CLI 框架 · `@visulima/fs` 文件 IO · `@visulima/path` 路径
+· `@visulima/colorize` 颜色 · `@visulima/tabular` 表格 · `@visulima/error` 抛错
+· `@clack/prompts` 交互 · `simple-git` 上游拉取
+
+`@visulima/tui` 已装但未用于主路径 —— 它在非 TTY 环境会因 raw mode 不可用直接崩，
+而 clack 能优雅降级。留给后续只在真终端运行的复杂面板。
+
+### 已知环境问题
+
+`core.autocrlf=true` 会让 git checkout 把 LF 转成 CRLF，
+使拉下来的内容与本体库逐字节不同，四象限会把每个 skill 都误判为已修改。
+拉取时已在临时仓库内强制 `core.autocrlf=false` + `core.eol=lf` 规避。

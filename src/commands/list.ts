@@ -1,7 +1,47 @@
 import { outsiders, readScanCache, reevaluate } from "../core/scan";
+import type { SkillView, SyncStatus } from "../core/types";
 import { buildViews } from "../core/view";
 import { colors } from "../ui/colors";
 import { printTable } from "../ui/prompts";
+
+/** 状态列的显示文本 */
+const STATUS_TEXT: Record<SyncStatus, (text: string) => string> = {
+  behind: colors.success,
+  conflicted: colors.warning,
+  diverged: colors.warning,
+  "local-only": colors.info,
+  "no-upstream": colors.gray,
+  unknown: colors.gray,
+  "up-to-date": colors.gray,
+};
+
+const STATUS_LABEL: Record<SyncStatus, string> = {
+  behind: "有新版本",
+  conflicted: "有冲突待解",
+  diverged: "有新版+本地改",
+  "local-only": "本地已改",
+  "no-upstream": "—",
+  unknown: "未检查",
+  "up-to-date": "已是最新",
+};
+
+/** 状态列文本，带新鲜度 */
+function statusCell(view: SkillView): string {
+  const paint = STATUS_TEXT[view.status];
+  const label = STATUS_LABEL[view.status];
+
+  if (view.status === "conflicted") {
+    return paint(`${label}（${view.conflicts}）`);
+  }
+  // 已是最新／本地已改这类结论有时效，标上日期免得误以为是实时的
+  if (
+    view.checkedAt &&
+    (view.status === "up-to-date" || view.status === "local-only")
+  ) {
+    return paint(`${label} ${view.checkedAt.slice(5, 10)}`);
+  }
+  return paint(label);
+}
 
 /**
  * 提示待归一化的位置。
@@ -30,12 +70,45 @@ async function hintPending(): Promise<void> {
   );
 }
 
+/** 底部统计与下一步提示 */
+function summarize(views: SkillView[], hidden: number): void {
+  const tracked = views.filter((v) => v.tracked).length;
+  const enabled = views.filter(
+    (v) => v.enabledGlobal || v.enabledProject
+  ).length;
+  const behind = views.filter(
+    (v) => v.status === "behind" || v.status === "diverged"
+  ).length;
+  const unknown = views.filter((v) => v.status === "unknown").length;
+
+  console.log(
+    colors.gray(
+      `共 ${views.length} 个，${tracked} 个已追踪上游，${enabled} 个已启用`
+    )
+  );
+  if (behind > 0) {
+    console.log(colors.success(`${behind} 个有新版本可更新`));
+  }
+  if (unknown > 0) {
+    console.log(
+      colors.gray(
+        `${unknown} 个状态未知 —— 跑 agent check 联网核对（状态列的结论来自上次检查）`
+      )
+    );
+  }
+  if (hidden > 0) {
+    console.log(colors.gray(`另有 ${hidden} 个已失联记录，用 --all 查看`));
+  }
+}
+
 /**
  * 列出本体库全部 skill。
  *
- * 默认隐藏已失联的（本体库里已不存在）—— 它们的记录只为保住 base 快照
- * 与合并历史，天天列出来只会淹没真实条目。用 --all 查看。
- * asJson 给 AI 与脚本用：表格带 ANSI 颜色码，机器解析不可靠。
+ * 「上游」与「状态」是两件事，分两列：
+ *  - 上游：lock 里有没有记录，决定**能不能** update
+ *  - 状态：上次检查的结论，回答**要不要** update
+ * 合成一列会让人以为「可更新」等于「有新版本」，实际跑 update 却
+ * 提示无变化 —— 这正是原先的设计问题。
  */
 export async function list(
   projectPath: string,
@@ -62,27 +135,14 @@ export async function list(
 
   const rows = views.map((v) => [
     v.orphaned ? colors.gray(v.id) : v.id,
-    // 「有上游」是能力而非待办：有上游才可以执行 update，
-    // 与「现在是否有新版本」无关 —— 后者要连网才知道。
-    v.updatable ? colors.info("有") : colors.gray("无"),
+    v.tracked ? colors.info("已追踪") : colors.gray("无"),
+    statusCell(v),
     v.enabledGlobal ? colors.info("●") : colors.gray("○"),
     v.enabledProject ? colors.info("●") : colors.gray("○"),
     v.orphaned ? colors.warning("已失联") : "",
   ]);
 
-  printTable(["ID", "上游", "全局", "项目", ""], rows);
-
-  const updatable = views.filter((v) => v.updatable).length;
-  const enabled = views.filter(
-    (v) => v.enabledGlobal || v.enabledProject
-  ).length;
-  console.log(
-    colors.gray(
-      `共 ${views.length} 个，${updatable} 个有上游（可 update），${enabled} 个已启用`
-    )
-  );
-  if (hidden > 0) {
-    console.log(colors.gray(`另有 ${hidden} 个已失联记录，用 --all 查看`));
-  }
+  printTable(["ID", "上游", "状态", "全局", "项目", ""], rows);
+  summarize(views, hidden);
   await hintPending();
 }

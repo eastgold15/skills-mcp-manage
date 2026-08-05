@@ -117,6 +117,14 @@ export async function updateSkill(
         syncedAt: now,
         ...(commit ? { upstreamCommit: commit } : {}),
       },
+      // update 顺带就是一次检查：刚拉过上游，这个观测不该浪费。
+      // 合并成功后上游内容已取下来，故 upstreamChanged 记 false。
+      lastCheck: {
+        at: now,
+        localChanged: verdict.localChanged,
+        upstreamChanged: conflicts.length > 0 && verdict.upstreamChanged,
+        ...(commit ? { commit } : {}),
+      },
       lastMerge: { at: now, conflicts, quadrant: verdict.quadrant },
     };
     await writeState(current);

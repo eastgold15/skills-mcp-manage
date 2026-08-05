@@ -1,6 +1,7 @@
 import { syncFromLock } from "../core/state";
-import type { MergeState } from "../core/types";
+import type { MergeState, SkillState, SyncStatus } from "../core/types";
 import { isUpdateError, type UpdateOutcome, updateSkill } from "../core/update";
+import { deriveStatus } from "../core/view";
 import { colors } from "../ui/colors";
 import { askMultiSelect, printSuccess, printWarning } from "../ui/prompts";
 import { withSpinner } from "../ui/spinner";
@@ -28,6 +29,17 @@ function updatableIds(state: MergeState): string[] {
     .map(([id]) => id);
 }
 
+/** 选单里的状态提示，让人在选之前就知道该选哪个 */
+const HINT_TEXT: Record<SyncStatus, string> = {
+  behind: "有新版本，可快进",
+  conflicted: "上次留有冲突未解",
+  diverged: "有新版本，会三路合并",
+  "local-only": "上游没动，跑了也不会变",
+  "no-upstream": "无上游",
+  unknown: "未检查过，跑 agent check 可先探明",
+  "up-to-date": "已是最新，跑了也不会变",
+};
+
 /** 确定要更新哪些：给了 id 就校验，没给就让用户多选 */
 async function resolveTargets(
   state: MergeState,
@@ -44,9 +56,16 @@ async function resolveTargets(
     return null;
   }
 
+  // 带上状态提示：原先只列 id，用户选完才发现「上游无变化」，
+  // 看起来像 ls 说可更新却更新不了。状态摆在眼前就不会误解。
+  const options = updatable.map((key) => {
+    const status = deriveStatus(state.skills[key] as SkillState);
+    return { hint: HINT_TEXT[status], label: key, value: key };
+  });
+
   const picked = await askMultiSelect<string>(
     "选择要更新的 skill（空格多选）",
-    updatable.map((key) => ({ label: key, value: key }))
+    options
   );
   if (picked.length === 0) {
     printWarning("未选择任何 skill");

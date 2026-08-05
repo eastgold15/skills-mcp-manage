@@ -46,14 +46,40 @@ agent list --all     # 连已失联的记录一起显示
 JSON 每项形如：
 
 ```json
-{ "id": "codegraph", "updatable": true, "enabledGlobal": false, "enabledProject": true, "orphaned": false }
+{ "id": "codegraph", "tracked": true, "status": "up-to-date", "checkedAt": "2026-08-05T11:12:25Z",
+  "conflicts": 0, "enabledGlobal": false, "enabledProject": true, "orphaned": false }
 ```
 
-- `updatable: true` 表示**有上游、可以执行 update**，**不是**"现在有新版本待更新"（后者要连网才知道）
-- `updatable: false` 表示 lock 里没有上游记录，只能启用不能更新
-- `orphaned: true` 表示本体库里已不存在，记录保留只为留住 base 快照与合并历史；默认不显示
+**`tracked` 与 `status` 是两件事，别混：**
+
+- `tracked: true` = lock 里有上游记录，**能**执行 update。与"有没有新版本"无关。
+- `status` = 上次检查的结论，回答**要不要** update：
+
+| status | 含义 | update 会怎样 |
+|---|---|---|
+| `unknown` | 有上游但从未检查过 | 不知道，先跑 `agent check` |
+| `up-to-date` | 上次检查时两边都没变 | 提示"已是最新"，什么都不做 |
+| `local-only` | 只有你改过，上游没动 | 提示"上游无变化，保留本地修改" |
+| `behind` | 上游有新内容 | 快进到最新 |
+| `diverged` | 上游有新内容且你也改过 | 三路合并 |
+| `conflicted` | 上次合并留了冲突未解 | 需先手工处理冲突标记 |
+| `no-upstream` | 没有上游 | 无法 update |
+
+`status` 来自**上次** check 或 update，可能过时——`checkedAt` 交代新鲜度。要知道上游此刻的真实状态，跑 `agent check`。
 
 `list` 还会提示有多少 skill 散落在本体库外（读扫描缓存，不动文件）。
+
+### 检查上游有无新版本
+
+```bash
+agent check              # 检查全部有上游的（联网，每个约 2 秒）
+agent check codegraph    # 只检查指定的
+agent check --json
+```
+
+**只看不动**：拉上游、比四象限、把结论写进 state，本体库一个字节都不碰。之后 `agent list` 的状态列就是实时的了。
+
+为什么需要单独一个命令：判断"上游有没有新版本"**本地无从推导**。`lockFolderHash` 是 skills.sh 安装时算的，不随上游变化；`.base/` 快照只记录上次同步态。必须联网拉一次对比。做成独立命令是为了让 `list` 保持只读且毫秒级。
 
 ### 启用（安装到作用域）
 

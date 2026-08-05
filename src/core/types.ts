@@ -54,8 +54,28 @@ export interface MergeRecord {
   quadrant: Quadrant;
 }
 
+/**
+ * 一次联网检查的结果。
+ *
+ * 必须落盘：判断「上游有没有新版本」只能靠拉取对比，本地无从推导 ——
+ * lockFolderHash 是 skills.sh 安装时算的，不随上游变化。
+ * 所以 ls 显示的是上次 check 的结论，可能过时，由 checkedAt 交代。
+ */
+export interface CheckRecord {
+  /** 检查时刻 */
+  at: string;
+  /** 拉到的上游 commit，便于察觉后续变动 */
+  commit?: string;
+  /** 本地相对 base 有改动 */
+  localChanged: boolean;
+  /** 上游相对 base 有改动 —— 这才是「可以更新」 */
+  upstreamChanged: boolean;
+}
+
 export interface SkillState {
   base: BaseSnapshot | null;
+  /** 上次 agent check 的结果 */
+  lastCheck?: CheckRecord;
   lastMerge?: MergeRecord;
   /** lock 里曾有、现已消失。不删除，由 doctor 报出 */
   orphaned?: boolean;
@@ -113,14 +133,41 @@ export interface ScopeEntry {
 
 // ── 视图 ─────────────────────────────────────────────────────
 
+/**
+ * 一个 skill 的同步状态。
+ *
+ * 与「有没有上游」分开：有上游只是**能**执行 update，
+ * 至于上游此刻有没有新版本，得联网 check 才知道。
+ */
+export type SyncStatus =
+  /** 没有上游，谈不上同步 */
+  | "no-upstream"
+  /** 有上游但从未 check / update 过，不知道状态 */
+  | "unknown"
+  /** 上次检查时两边都没变 */
+  | "up-to-date"
+  /** 上游有新内容可取 */
+  | "behind"
+  /** 只有本地改过，上游没动 */
+  | "local-only"
+  /** 上游有新内容且本地也改过，update 会三路合并 */
+  | "diverged"
+  /** 上次合并留下未解决的冲突 */
+  | "conflicted";
+
 /** list 命令的一行 */
 export interface SkillView {
+  /** 上次 check 或 update 的时刻，用于交代状态的新鲜度 */
+  checkedAt?: string;
+  /** 上次合并遗留的冲突文件数 */
+  conflicts: number;
   enabledGlobal: boolean;
   enabledProject: boolean;
   id: string;
   orphaned: boolean;
-  /** 有上游才能 update */
-  updatable: boolean;
+  status: SyncStatus;
+  /** lock 里有上游记录 —— 能执行 update，不代表有新版本 */
+  tracked: boolean;
 }
 
 // ── 扫描注册表 ───────────────────────────────────────────────

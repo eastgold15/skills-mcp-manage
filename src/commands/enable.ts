@@ -78,7 +78,7 @@ export async function enable(
   const picked = await askMultiSelect<string>(
     `选择要启用到${scope === "global" ? "全局" : "本项目"}的 skill（空格多选）`,
     candidates.map((v) => ({
-      hint: v.updatable ? undefined : "无上游",
+      hint: v.tracked ? undefined : "无上游",
       label: v.id,
       value: v.id,
     }))

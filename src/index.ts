@@ -2,6 +2,7 @@
 
 import { createCerebro, type Toolbox } from "@visulima/cerebro";
 import { errorHandlerPlugin } from "@visulima/cerebro/plugins/error-handler";
+import { check } from "./commands/check";
 import { showConfig } from "./commands/config";
 import { diff } from "./commands/diff";
 import { disable } from "./commands/disable";
@@ -113,6 +114,27 @@ cli.addCommand({
   },
   name: "disable",
   options: SCOPE_OPTIONS,
+});
+
+cli.addCommand({
+  argument: {
+    description: "skill ID，可传多个；省略则检查全部有上游的",
+    name: "ids",
+    type: String,
+  },
+  description: "联网检查上游有无新版本（只看不动），结果记入 state 供 ls 显示",
+  examples: ["agent check", "agent check codegraph", "agent check --json"],
+  execute: async ({ argument, options }: Toolbox) => {
+    await check({ asJson: Boolean(options.json), ids: argument });
+  },
+  name: "check",
+  options: [
+    {
+      description: "输出 JSON，便于脚本与 AI 解析",
+      name: "json",
+      type: Boolean,
+    },
+  ],
 });
 
 cli.addCommand({

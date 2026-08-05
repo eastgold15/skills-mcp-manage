@@ -111,7 +111,6 @@ export async function fetchUpstream(
     .map((line) => line.trim())
     .filter((line) => line !== "");
   const resolved = resolveSkillDir(paths, declared);
-
   await git.raw(["config", "core.sparseCheckout", "true"]);
   await git.raw(["sparse-checkout", "init", "--cone"]);
   await git.raw(["sparse-checkout", "set", resolved]);
@@ -124,4 +123,59 @@ export async function fetchUpstream(
     contentDir: join(workDir, resolved),
     resolvedSkillPath: `${resolved}/SKILL.md`,
   };
+}
+
+/**
+ * 只取仓库的文件清单，不 checkout 内容。
+ *
+ * 给 track 用：skills.sh 只给包名（owner/repo@skill），不给仓库内路径，
+ * 而目录名与包名常常不一致 —— 实测 elysiajs/skills@elysiajs 的目录
+ * 其实叫 elysia/。靠猜必然失败，必须先看清单。
+ */
+export async function listUpstreamPaths(
+  sourceUrl: string,
+  workDir: string
+): Promise<string[]> {
+  await remove(workDir);
+  await ensureDir(workDir);
+
+  const git = simpleGit(workDir);
+  await git.init();
+  await git.raw(["config", "core.autocrlf", "false"]);
+  await git.raw(["config", "core.eol", "lf"]);
+  await git.addRemote("origin", sourceUrl);
+  await git.fetch(["--depth", "1", "origin", "HEAD"]);
+
+  const listing = await git.raw(["ls-tree", "-r", "--name-only", "FETCH_HEAD"]);
+  return listing
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+}
+
+/**
+ * 在清单里找含 SKILL.md 的目录。
+ *
+ * 优先精确匹配目录名，其次唯一的 SKILL.md，最后全部候选。
+ */
+export function findSkillDirs(paths: string[], preferName?: string): string[] {
+  const dirs = paths
+    .filter((path) => path.endsWith("SKILL.md"))
+    .map((path) =>
+      path === "SKILL.md" ? "" : path.slice(0, -"/SKILL.md".length)
+    );
+  const unique = [...new Set(dirs)];
+
+  if (!preferName) {
+    return unique;
+  }
+
+  // 目录名与 skill 名一致的排最前
+  return unique.sort((a, b) => {
+    const nameA = a.split("/").pop() ?? a;
+    const nameB = b.split("/").pop() ?? b;
+    const scoreA = nameA === preferName ? 0 : 1;
+    const scoreB = nameB === preferName ? 0 : 1;
+    return scoreA - scoreB || a.length - b.length;
+  });
 }

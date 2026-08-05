@@ -9,7 +9,9 @@ import { disable } from "./commands/disable";
 import { doctor } from "./commands/doctor";
 import { enable } from "./commands/enable";
 import { list } from "./commands/list";
+import { repo } from "./commands/repo";
 import { scan } from "./commands/scan";
+import { track } from "./commands/track";
 import { update } from "./commands/update";
 import type { Scope } from "./core/types";
 import { PromptCancelled } from "./ui/prompts";
@@ -215,6 +217,78 @@ cli.addCommand({
     await showConfig();
   },
   name: "config",
+});
+
+cli.addCommand({
+  argument: {
+    description: "skill ID，可传多个；省略则处理全部无上游的",
+    name: "ids",
+    type: String,
+  },
+  description: "为无上游的 skill 搜索并记录上游（拉取候选对比内容后确认）",
+  examples: [
+    "agent track",
+    "agent track shadcn",
+    "agent track --list",
+    "agent track --yes --handoff",
+  ],
+  execute: async ({ argument, options }: Toolbox) => {
+    await track({
+      autoIdentical: Boolean(options.yes),
+      handoff: Boolean(options.handoff),
+      ids: argument,
+      listOnly: Boolean(options.list),
+    });
+  },
+  name: "track",
+  options: [
+    {
+      alias: "l",
+      description: "只列出候选与比对结果，不记录任何上游",
+      name: "list",
+      type: Boolean,
+    },
+    {
+      alias: "y",
+      description: "逐字节一致的直接采用，不逐个询问",
+      name: "yes",
+      type: Boolean,
+    },
+    {
+      description:
+        "记上游后调 skills add 让 skills.sh 也入账（会用上游内容覆盖本地，已自动建 git 检查点）",
+      name: "handoff",
+      type: Boolean,
+    },
+  ],
+});
+
+cli.addCommand({
+  description: "本体库的版本管理：初始化 git、查看改动、提交检查点",
+  examples: [
+    "agent repo",
+    "agent repo --log",
+    'agent repo --commit "手工调整了 shadcn"',
+  ],
+  execute: async ({ options }: Toolbox) => {
+    await repo({
+      ...(typeof options.commit === "string" ? { commit: options.commit } : {}),
+      log: Boolean(options.log),
+    });
+  },
+  name: "repo",
+  options: [
+    {
+      description: "把当前改动提交为检查点，需给出说明",
+      name: "commit",
+      type: String,
+    },
+    {
+      description: "显示最近 10 条提交",
+      name: "log",
+      type: Boolean,
+    },
+  ],
 });
 
 cli.addCommand({

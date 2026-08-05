@@ -25,6 +25,44 @@ export async function mapDirectory(dir: string): Promise<FileMap> {
   return map;
 }
 
+/**
+ * 同 mapDirectory，但先把 CRLF 归一成 LF 再算哈希。
+ *
+ * 用于「这两份是不是同一个东西」这类相似度判断：本机文件多为 CRLF、
+ * 上游仓库为 LF，按原始字节比会得出「每个文件都不同」，数字毫无意义。
+ * update 的四象限**不该**用这个 —— 那里需要严格的逐字节判定。
+ */
+export async function mapDirectoryNormalized(dir: string): Promise<FileMap> {
+  const map: FileMap = new Map();
+  if (!(await isAccessible(dir))) {
+    return map;
+  }
+
+  const root = normalizePath(dir);
+  for await (const entry of walk(dir, {
+    followSymlinks: false,
+    includeDirs: false,
+  })) {
+    const relative = normalizePath(entry.path).slice(root.length + 1);
+    const raw = (await readFile(entry.path, { buffer: true })) as Uint8Array;
+    map.set(relative, sha1(stripCarriageReturns(raw)));
+  }
+  return map;
+}
+
+/** 去掉所有 \r（0x0D），使 CRLF 与 LF 等价 */
+function stripCarriageReturns(buffer: Uint8Array): Uint8Array {
+  const out = new Uint8Array(buffer.length);
+  let length = 0;
+  for (const byte of buffer) {
+    if (byte !== 0x0d) {
+      out[length] = byte;
+      length += 1;
+    }
+  }
+  return out.subarray(0, length);
+}
+
 function sha1(buffer: Uint8Array): string {
   return createHash("sha1").update(buffer).digest("hex");
 }

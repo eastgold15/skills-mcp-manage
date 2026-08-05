@@ -63,6 +63,11 @@ export interface SkillState {
 }
 
 export interface MergeState {
+  /**
+   * 上次投影时本体库的目录清单，门控用。
+   * 老版本文件里没有这个字段，读作空数组即触发重新投影，自愈。
+   */
+  libraryIds?: string[];
   /** 上次投影时 .skill-lock.json 的文件哈希，门控用 */
   lockFileHash: string;
   skills: Record<string, SkillState>;
@@ -116,4 +121,61 @@ export interface SkillView {
   orphaned: boolean;
   /** 有上游才能 update */
   updatable: boolean;
+}
+
+// ── 扫描注册表 ───────────────────────────────────────────────
+
+/**
+ * 扫描策略，落在 ~/.agents/.skill-scan.json，由用户手工维护。
+ *
+ * 存在的理由：磁盘上带 SKILL.md 的目录成千上万，绝大多数是第三方
+ * 工具的内置资源。「哪些算我的 skill」是用户的偏好，代码猜不了 ——
+ * 硬编码白名单要么漏（放进第三方内置）要么误杀（漏掉真想管的位置）。
+ * 交给 glob 配置，规则可读、可审计、可版本化。
+ */
+export interface ScanConfig {
+  /** 排除的 glob，优先级高于 include */
+  exclude: string[];
+  /** 命中即视为「用户的 skill」，只有这些才允许归一化 */
+  include: string[];
+  /** 全盘扫描的起点 */
+  roots: string[];
+  version: number;
+}
+
+/**
+ * 扫到的一个 skill 位置。
+ *
+ * 同一个 id 可能在多处出现（本体库一份、项目里一份副本），
+ * 因此这里是「位置」的清单而非「skill」的清单。
+ */
+export interface ScanHit {
+  /**
+   * 是否命中配置的 include 且未被 exclude 挡掉。
+   * 只有 true 才允许归一化 —— 判定完全由 ~/.agents/.skill-scan.json 决定。
+   */
+  adoptable: boolean;
+  id: string;
+  /** 是本体库内的（~/.agents/skills/<id>） */
+  inLibrary: boolean;
+  /** 是链接而非真实目录 */
+  isLink: boolean;
+  /** skill 目录的绝对路径 */
+  path: string;
+  /** 链接目标，isLink 为 false 时 undefined */
+  target?: string;
+}
+
+/**
+ * 扫描结果缓存，落在 ~/.agents/.scan-cache.json。
+ *
+ * 存在的意义就是让 ls 不必每次全盘扫 —— 全盘扫一次要走遍磁盘，
+ * 实测 80 秒；读这个 JSON 是毫秒级。数据可能过时，靠 scan 刷新。
+ */
+export interface ScanCache {
+  hits: ScanHit[];
+  /** 本次扫描覆盖的根目录，便于判断缓存的适用范围 */
+  roots: string[];
+  scannedAt: string;
+  version: number;
 }

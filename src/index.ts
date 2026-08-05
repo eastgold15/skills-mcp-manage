@@ -2,10 +2,12 @@
 
 import { createCerebro, type Toolbox } from "@visulima/cerebro";
 import { errorHandlerPlugin } from "@visulima/cerebro/plugins/error-handler";
+import { showConfig } from "./commands/config";
 import { disable } from "./commands/disable";
 import { doctor } from "./commands/doctor";
 import { enable } from "./commands/enable";
 import { list } from "./commands/list";
+import { scan } from "./commands/scan";
 import { update } from "./commands/update";
 import type { Scope } from "./core/types";
 import { PromptCancelled } from "./ui/prompts";
@@ -54,12 +56,18 @@ const SCOPE_OPTIONS = [
 cli.addCommand({
   alias: "ls",
   description: "列出本体库全部 skill 及其启用状态",
-  examples: ["agent list", "agent list --json"],
+  examples: ["agent list", "agent list --json", "agent list --all"],
   execute: async ({ options }: Toolbox) => {
-    await list(process.cwd(), Boolean(options.json));
+    await list(process.cwd(), Boolean(options.json), Boolean(options.all));
   },
   name: "list",
   options: [
+    {
+      alias: "a",
+      description: "连已失联的记录一起显示",
+      name: "all",
+      type: Boolean,
+    },
     {
       description: "输出 JSON，便于脚本与 AI 解析",
       name: "json",
@@ -126,6 +134,64 @@ cli.addCommand({
     await doctor(process.cwd());
   },
   name: "doctor",
+});
+
+cli.addCommand({
+  argument: {
+    description: "指定扫描位置，可传多个；省略则用配置里的 roots",
+    name: "roots",
+    type: String,
+  },
+  description: "按配置扫描磁盘上的 skill；--normalize 收编到本体库",
+  examples: [
+    "agent scan",
+    "agent scan L:/Documents/GitHub",
+    "agent scan --reuse",
+    "agent scan --normalize",
+    "agent scan --normalize --apply",
+  ],
+  execute: async ({ argument, options }: Toolbox) => {
+    await scan({
+      apply: Boolean(options.apply),
+      asJson: Boolean(options.json),
+      normalize: Boolean(options.normalize),
+      reuse: Boolean(options.reuse),
+      roots: argument,
+    });
+  },
+  name: "scan",
+  options: [
+    {
+      alias: "n",
+      description: "把本体库外的 skill 复制进本体库，原位置换成链接",
+      name: "normalize",
+      type: Boolean,
+    },
+    {
+      description: "真正执行归一化（不加则只预演，不动任何文件）",
+      name: "apply",
+      type: Boolean,
+    },
+    {
+      alias: "r",
+      description: "用上次的扫描结果重新判定，不重扫磁盘（改完配置后用）",
+      name: "reuse",
+      type: Boolean,
+    },
+    {
+      description: "输出 JSON，便于脚本与 AI 解析",
+      name: "json",
+      type: Boolean,
+    },
+  ],
+});
+
+cli.addCommand({
+  description: "显示扫描策略配置的位置与内容（include/exclude 由你手工维护）",
+  execute: async () => {
+    await showConfig();
+  },
+  name: "config",
 });
 
 try {

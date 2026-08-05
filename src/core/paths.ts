@@ -64,6 +64,11 @@ export function baseDir(id: string): string {
   return join(baseRoot(), id);
 }
 
+/** ~/.agents/.scan-cache.json —— 扫描结果缓存，避免 ls 每次全盘扫 */
+export function scanCacheFile(): string {
+  return join(agentsRoot(), ".scan-cache.json");
+}
+
 // ── 作用域 ───────────────────────────────────────────────────
 
 /**

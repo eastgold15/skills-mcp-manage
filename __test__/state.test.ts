@@ -184,3 +184,96 @@ describe("syncFromLock 单向同步", () => {
     expect(state.skills.foo).toBeDefined();
   });
 });
+
+/**
+ * 真实 bug 的回归防线。
+ *
+ * 门控原先只看 .skill-lock.json 的哈希。那些无上游的 skill 压根不在 lock 里
+ * （靠扫本体库目录发现），直接删掉目录后 lock 一字节未变，门控短路
+ * 导致 scanLibrary 压根不执行 —— 实测 24 个已删除的 skill 在 list 里
+ * 继续显示，连 orphaned 都没标上。
+ */
+describe("本体库目录被直接增删时也要察觉", () => {
+  it("删掉无上游的 skill 目录后，条目标为 orphaned", async () => {
+    await seedAgents({
+      library: ["kept", "removed"],
+      lock: { skills: {}, version: 3 },
+    });
+
+    const first = await syncFromLock();
+    expect(first.skills.removed).toBeDefined();
+    expect(first.skills.removed?.orphaned).toBeUndefined();
+
+    // 直接删目录 —— lock 完全没变，这是原先失效的那条路径
+    await remove(join(ROOT, "skills", "removed"));
+    const second = await syncFromLock();
+
+    expect(second.skills.removed?.orphaned).toBe(true);
+    expect(second.skills.kept?.orphaned).toBeUndefined();
+  });
+
+  it("新增无上游的 skill 目录后立刻被认出", async () => {
+    await seedAgents({ library: ["one"], lock: { skills: {}, version: 3 } });
+    await syncFromLock();
+
+    const added = join(ROOT, "skills", "two");
+    await ensureDir(added);
+    await writeFile(join(added, "SKILL.md"), "name: two");
+
+    const state = await syncFromLock();
+
+    expect(state.skills.two).toBeDefined();
+    expect(state.skills.two?.upstream).toBeNull();
+  });
+
+  it("lock 与本体库都没变时才复用缓存（门控仍然有效）", async () => {
+    await seedAgents({
+      library: ["foo"],
+      lock: { skills: { foo: lockEntry("https://a.git") }, version: 3 },
+    });
+
+    const first = await syncFromLock();
+    const second = await syncFromLock();
+
+    // 门控命中：同步时间戳不变，说明没有重新投影
+    expect(second.syncedFromLockAt).toBe(first.syncedFromLockAt);
+  });
+
+  it("记录本体库目录清单用于门控", async () => {
+    await seedAgents({
+      library: ["a", "b"],
+      lock: { skills: {}, version: 3 },
+    });
+
+    const state = await syncFromLock();
+
+    expect(state.libraryIds).toEqual(["a", "b"]);
+  });
+
+  it("老版本 state 缺 libraryIds 时重新投影而非误判", async () => {
+    await seedAgents({
+      library: ["foo"],
+      lock: { skills: { foo: lockEntry("https://a.git") }, version: 3 },
+    });
+    const first = await syncFromLock();
+
+    // 模拟升级前写下的 state：有正确的 lockFileHash 但没有 libraryIds
+    await writeJson(
+      join(ROOT, ".merge-state.json"),
+      {
+        lockFileHash: first.lockFileHash,
+        skills: { ghost: { base: null, upstream: null } },
+        syncedFromLockAt: "2026-01-01T00:00:00Z",
+        version: 1,
+      } as unknown as MergeState,
+      { indent: 2 }
+    );
+
+    const state = await syncFromLock();
+
+    // 必须重新投影：ghost 不在本体库里，应标为 orphaned
+    expect(state.skills.ghost?.orphaned).toBe(true);
+    expect(state.skills.foo).toBeDefined();
+    expect(state.libraryIds).toEqual(["foo"]);
+  });
+});

@@ -71,12 +71,15 @@ async function scanLibrary(): Promise<string[]> {
 }
 
 /**
- * 单向同步：.skill-lock.json → .merge-state.json
+ * 单向同步：.skill-lock.json + 本体库目录实况 → .merge-state.json
  *
  * 方向恒定（我们的改动永不回写 lock），因此不存在双真理源冲突。
- * 靠 lock 的文件哈希门控：一致则整个投影跳过，零成本。
- *
  * 投影只覆盖 upstream 段；base 与 lastMerge 段原样保留。
+ *
+ * 门控同时看两个输入：lock 的文件哈希 **与** 本体库的目录清单。
+ * 只看 lock 会漏掉「直接删掉 ~/.agents/skills/<id> 目录」这条路径 ——
+ * 那些无上游的 skill 压根不在 lock 里，删掉后 lock 一字节未变，
+ * 门控短路导致陈旧条目永久留存，list 会显示已不存在的 skill。
  */
 export async function syncFromLock(): Promise<MergeState> {
   const state = await readState();
@@ -85,15 +88,20 @@ export async function syncFromLock(): Promise<MergeState> {
   const currentHash = (await isAccessible(lockPath))
     ? await calculateFileHash(lockPath)
     : "";
+  const libraryIds = await scanLibrary();
+  const currentLibrary = libraryIds.join(",");
 
-  // 门控：lock 没变则直接用现有 state
-  if (currentHash !== "" && currentHash === state.lockFileHash) {
+  // 门控：lock 与本体库目录都没变才可以复用现有 state
+  if (
+    currentHash !== "" &&
+    currentHash === state.lockFileHash &&
+    currentLibrary === (state.libraryIds ?? []).join(",")
+  ) {
     return state;
   }
 
   const lock = await readLock();
   const lockSkills = lock?.skills ?? {};
-  const libraryIds = await scanLibrary();
   const next: Record<string, SkillState> = {};
 
   // ① 吸取 lock 记录的条目：覆盖 upstream 段，保留我们的段
@@ -133,6 +141,7 @@ export async function syncFromLock(): Promise<MergeState> {
   }
 
   const synced: MergeState = {
+    libraryIds,
     lockFileHash: currentHash,
     skills: next,
     syncedFromLockAt: new Date().toISOString(),

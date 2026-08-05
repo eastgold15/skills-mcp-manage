@@ -1,6 +1,6 @@
 ---
 name: skill-manage
-description: 管理本机 Agent Skills 的安装、卸载与上游更新。当用户说「安装/启用某个 skill 到项目或全局」「卸载/移除某个 skill」「更新 skill」「看看有哪些 skill」「skill 冲突了」时使用本工具，而不是手动创建目录或复制文件。
+description: 管理本机 Agent Skills 的安装、卸载、上游更新与集中收编。当用户说「安装/启用某个 skill 到项目或全局」「卸载/移除某个 skill」「更新 skill」「看看有哪些 skill」「skill 散落各处」「扫描 skill」「skill 冲突了」时使用本工具，而不是手动创建目录或复制文件。
 ---
 
 # Skill 管理
@@ -21,15 +21,26 @@ description: 管理本机 Agent Skills 的安装、卸载与上游更新。当�
 - 卸载 = 删链接，本体库**永不受影响**。
 - `~/.agents/.skill-lock.json` 是 skills.sh 的文件，本工具**只读不写**。
 
+## 三个数据文件
+
+| 文件 | 谁维护 | 作用 |
+|---|---|---|
+| `~/.agents/.skill-lock.json` | skills.sh | 上游来源总账，本工具只读 |
+| `~/.agents/.merge-state.json` | 本工具 | base 快照与合并历史 |
+| `~/.agents/.skill-scan.json` | **用户手工** | 扫描策略（include/exclude glob） |
+| `~/.agents/.scan-cache.json` | 本工具 | 上次扫描结果，避免每次全盘扫 |
+
 ## 常用命令
 
 工具在项目根目录，用 `bun run src/index.ts` 调用（或已装好的 `agent` 命令）。
 
+
 ### 查看有哪些 skill
 
 ```bash
-agent list           # 表格，给人看
+agent list           # 表格，给人看（默认隐藏已失联的）
 agent list --json    # JSON，给你（AI）解析用，优先用这个
+agent list --all     # 连已失联的记录一起显示
 ```
 
 JSON 每项形如：
@@ -38,8 +49,11 @@ JSON 每项形如：
 { "id": "codegraph", "updatable": true, "enabledGlobal": false, "enabledProject": true, "orphaned": false }
 ```
 
+- `updatable: true` 表示**有上游、可以执行 update**，**不是**"现在有新版本待更新"（后者要连网才知道）
 - `updatable: false` 表示 lock 里没有上游记录，只能启用不能更新
-- `orphaned: true` 表示 lock 里曾有、现已消失，本体保留未删
+- `orphaned: true` 表示本体库里已不存在，记录保留只为留住 base 快照与合并历史；默认不显示
+
+`list` 还会提示有多少 skill 散落在本体库外（读扫描缓存，不动文件）。
 
 ### 启用（安装到作用域）
 
@@ -96,12 +110,52 @@ agent doctor
 
 区分作用域目录下三类东西：本工具纳管的链接、外部工具建的链接、真实目录副本。用户抱怨"skill 状态不对"时先跑这个。
 
+### 扫描与收编（解决"skill 散落各处"）
+
+```bash
+agent scan                          # 按配置全盘扫，报告分布
+agent scan L:/Documents/GitHub      # 只扫指定位置
+agent scan --reuse                  # 用上次结果重新判定，不重扫磁盘（改完配置后用）
+agent scan --json                   # JSON 输出
+agent scan --normalize              # 预演收编，不动任何文件
+agent scan --normalize --apply      # 真正执行
+```
+
+**判定 skill 的条件只有一条**：目录下直接含 `SKILL.md`。
+
+**"是否算用户的 skill"由配置决定**，不是代码猜的。策略在 `~/.agents/.skill-scan.json`：
+
+```json
+{
+  "roots": ["C:/Users/boer", "L:/Documents/GitHub"],
+  "include": ["**/.claude/skills/*", "**/.agents/skills/*", "**/.cursor/skills/*"],
+  "exclude": ["**/node_modules/**", "**/.trae-cn/builtin/**", "**/bundled-skills/**"]
+}
+```
+
+用 `agent config` 查看位置与当前内容。**这个文件由用户手工编辑** —— 实测这台机器全盘有 2191 处 `SKILL.md`，其中 1985 处是 Trae/Hermes 内置资源与包缓存，只有 201 处是用户的。范围判断是用户偏好，代码判断不了。用户说"这些也要管"或"别扫那里"时，改这个文件再跑 `--reuse`。
+
+**归一化做什么**：把本体库外的 skill 复制进 `~/.agents/skills/`，原位置替换为指向它的 junction。四种结果：
+
+| 情况 | 结果 | 说明 |
+|---|---|---|
+| 本体库没有 | `adopted` | 复制进去，原位置换链接 |
+| 本体库有、内容一致 | `linked` | 直接换链接 |
+| 本体库有、**内容不同** | `diverged` | **一个文件都不动**，报出让人决定 |
+| 指向别处的链接 | `external` | 别的工具的资产，不碰 |
+
+`diverged` 是关键保护：同名不等于同内容，静默覆盖会真丢数据。遇到时告知用户哪些路径冲突，让其比对后决定保留哪份。
+
+**默认是预演。** 不加 `--apply` 绝不动文件。执行前建议先让用户看预演结果。
+
 ## 安装新 skill（本体库还没有的）
 
 本工具**不负责从网上下载**。本体库为空或用户要装一个本地没有的 skill 时，用 skills.sh 的 CLI 下载到 `~/.agents/skills/`，再用 `agent enable` 启用。skill 目录也可以手动放到 `~/.agents/skills/<id>/`（含 `SKILL.md`），本工具会自动纳管，只是没有上游因而不可更新。
 
 ## 边界
 
-- 目前只支持 Claude Code（`.claude/skills/`）
+- 目前只支持 Claude Code（`.claude/skills/`）作为启用目标
 - 不写 `.skill-lock.json`
 - 不删非本工具建立的东西
+- `list` 只读不动文件；所有副作用都在 `enable`/`disable`/`update`/`scan --apply`
+

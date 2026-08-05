@@ -97,16 +97,38 @@ agent enable codegraph -g              # 装到全局
 
 `-p` / `--project` 与 `-g` / `--global` 二选一；**都不传时默认项目作用域**（非交互路径）。若用户没说清装到哪，问一句再执行。
 
-### 卸载
+### 卸载（停用，保留本体）
 
-用户说"把 X 从项目里移除"：
+用户说"把 X 从项目里移除"、"停用 X"：
 
 ```bash
 agent disable codegraph -p
 agent disable codegraph ast-grep -g
 ```
 
-只删本工具建的链接。遇到外部工具建的链接或手写的真实目录会**拒绝删除并提示**，这是有意的保护。
+只删本工具建的链接，**本体库不动**，之后还能再启用。遇到外部工具建的链接或手写的真实目录会**拒绝删除并提示**，这是有意的保护。
+
+### 彻底删除（从本体库抹掉）
+
+用户说"删掉 X"、"不要 X 了"、"清理这些 skill"：
+
+```bash
+agent remove                          # TUI 多选
+agent remove old-skill another-one    # 直接指定，仍会要确认
+agent remove old-skill --force        # 跳过确认
+agent remove old-skill --no-sync      # 不通知 skills.sh，只打印命令
+```
+
+**与 disable 的区别**：`disable` 只摘链接，`remove` 是把本体库里的目录删掉，不可再启用。用户说"移除/停用"时优先问清是哪个意思。
+
+执行顺序（顺序有讲究，不能颠倒）：
+
+1. **摘掉作用域链接** —— 必须先做。实测删掉本体后 junction 仍然存在但变成**悬空链接**（`lstat` 能读到、`readlink` 还指向原处，但内容 ENOENT），Claude Code 扫到会出错
+2. 删除本体目录与 `.base/` 快照
+3. 清掉 `.merge-state.json` 里的条目
+4. **通知 skills.sh**（`npx skills remove <ids> -g -y`）—— 不同步的话它还以为装着，而且 `.skill-lock.json` 的残留记录会在下次 `syncFromLock` 时被重新投影，在 `ls` 里显示成"已失联"
+
+**安全性**：删除前自动建 git 检查点（本体库已 git 化的话），可 `git revert` 找回。若本体库还没纳入 git，会警告"删除不可恢复"并建议先跑 `agent repo`。遇到非本工具建立的作用域链接会**中止该项删除**，避免留下悬空链接。
 
 ### 更新（三路合并）
 

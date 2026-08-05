@@ -131,3 +131,17 @@ export async function skillsAdd(
 ): Promise<void> {
   await runSkills(["add", pkg, "--global", "--yes"], timeoutMs);
 }
+
+/**
+ * 让 skills.sh 把这些 skill 从账上去掉。
+ *
+ * 不同步的后果：npx skills list 仍列出已删的 skill，而且
+ * .skill-lock.json 里的残留记录会在下次 syncFromLock 时被重新投影，
+ * 在 ls 里显示成 orphaned。
+ */
+export async function skillsRemove(
+  ids: string[],
+  timeoutMs = 120_000
+): Promise<void> {
+  await runSkills(["remove", ...ids, "--global", "--yes"], timeoutMs);
+}

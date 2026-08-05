@@ -9,6 +9,7 @@ import { disable } from "./commands/disable";
 import { doctor } from "./commands/doctor";
 import { enable } from "./commands/enable";
 import { list } from "./commands/list";
+import { remove } from "./commands/remove";
 import { repo } from "./commands/repo";
 import { scan } from "./commands/scan";
 import { track } from "./commands/track";
@@ -286,6 +287,43 @@ cli.addCommand({
     {
       description: "显示最近 10 条提交",
       name: "log",
+      type: Boolean,
+    },
+  ],
+});
+
+cli.addCommand({
+  argument: {
+    description: "skill ID，可传多个；省略则进入 TUI 多选",
+    name: "ids",
+    type: String,
+  },
+  description:
+    "从本体库彻底删除 skill（连带摘链接、清快照、同步 skills.sh）。只想停用请用 disable",
+  examples: [
+    "agent remove",
+    "agent remove old-skill another-one",
+    "agent remove old-skill --force",
+    "agent remove old-skill --no-sync",
+  ],
+  execute: async ({ argument, options }: Toolbox) => {
+    await remove(process.cwd(), {
+      force: Boolean(options.force),
+      ids: argument,
+      noSync: Boolean(options.noSync),
+    });
+  },
+  name: "remove",
+  options: [
+    {
+      alias: "f",
+      description: "跳过确认",
+      name: "force",
+      type: Boolean,
+    },
+    {
+      description: "不通知 skills.sh，只打印待执行的命令",
+      name: "no-sync",
       type: Boolean,
     },
   ],

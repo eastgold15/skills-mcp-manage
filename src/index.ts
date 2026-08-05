@@ -3,6 +3,7 @@
 import { createCerebro, type Toolbox } from "@visulima/cerebro";
 import { errorHandlerPlugin } from "@visulima/cerebro/plugins/error-handler";
 import { showConfig } from "./commands/config";
+import { diff } from "./commands/diff";
 import { disable } from "./commands/disable";
 import { doctor } from "./commands/doctor";
 import { enable } from "./commands/enable";
@@ -192,6 +193,28 @@ cli.addCommand({
     await showConfig();
   },
   name: "config",
+});
+
+cli.addCommand({
+  argument: {
+    description: "只处理这个 skill ID",
+    name: "id",
+    type: String,
+  },
+  description: "逐个比对与本体库同名但内容不同的 skill，决定保留哪份",
+  examples: ["agent diff", "agent diff --list", "agent diff find-skills"],
+  execute: async ({ argument, options }: Toolbox) => {
+    await diff({ listOnly: Boolean(options.list), only: argument[0] });
+  },
+  name: "diff",
+  options: [
+    {
+      alias: "l",
+      description: "只列出差异清单，不进入逐个处理",
+      name: "list",
+      type: Boolean,
+    },
+  ],
 });
 
 try {

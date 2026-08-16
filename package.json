@@ -8,7 +8,7 @@
     "@visulima/error": "^6.1.0",
     "@visulima/fs": "^5.1.0",
     "@visulima/pail": "^4.1.0",
-    "@visulima/path": "^3.1.0",
+    "@visulima/path": "^4.0.0",
     "@visulima/tabular": "^4.1.0",
     "@visulima/tui": "^4.0.0",
     "react": "^19.2.8",
@@ -17,7 +17,7 @@
     "simple-git": "^3.36.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.7",
     "@types/bun": "latest",
     "@types/node": "^26.0.1",
     "@types/react": "^19.2.18",
@@ -25,7 +25,7 @@
     "esbuild": "^0.28.1",
     "lefthook": "^2.1.10",
     "typescript": "^6.0.3",
-    "ultracite": "7.9.4"
+    "ultracite": "7.10.2"
   },
   "name": "@agent/cli",
   "scripts": {

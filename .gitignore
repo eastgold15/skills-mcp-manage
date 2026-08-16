@@ -35,6 +35,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Finder (MacOS) folder config
 .DS_Store
-agent.exe
+**.exe
 .agent/deps.json
-bun.lock
+.turbo

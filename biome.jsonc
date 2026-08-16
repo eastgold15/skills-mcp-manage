@@ -4,13 +4,17 @@
   "linter": {
     "rules": {
       "suspicious": {
-        "useAwait": "off"
+        "useAwait": "off",
+        "noUnnecessaryConditions": "off"
       },
       "performance": {
         "useTopLevelRegex": "off",
         // 本项目的循环多为顺序文件操作（建链接、逐文件合并、删除），
         // 并发会互相干扰或让进度提示错乱，必须逐个 await
         "noAwaitInLoops": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "off"
       }
     }
   },

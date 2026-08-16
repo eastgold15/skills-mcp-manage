@@ -130,7 +130,10 @@ describe("scanRoots 找出磁盘上的 skill", () => {
 
     const hits = await scanRoots([DISK], testPolicy());
 
-    expect(hits.map((h) => h.id).sort()).toEqual(["alpha", "beta"]);
+    expect(hits.map((h) => h.id).sort((a, b) => a.localeCompare(b))).toEqual([
+      "alpha",
+      "beta",
+    ]);
   });
 
   it("被 exclude 挡掉的仍会扫到，但标为不可归一化", async () => {

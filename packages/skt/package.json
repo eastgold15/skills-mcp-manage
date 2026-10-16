@@ -27,7 +27,7 @@
     "@visulima/colorize": "^2.1.0",
     "@visulima/error": "^6.1.0",
     "@visulima/fs": "^6.0.0",
-    "@visulima/pail": "^4.1.0",
+    "@visulima/pail": "^5.0.0",
     "@visulima/path": "^4.0.0",
     "@visulima/tabular": "^4.1.0",
     "@visulima/tui": "^4.0.0",
